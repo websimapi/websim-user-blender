@@ -860,9 +860,7 @@ const BlenderApp = () => {
                                             const a = document.createElement('a');
                                             a.href = selectedCreation.imageUrl;
                                             a.download = `blended-avatar-${selectedCreation.users.join('-')}.png`;
-                                            // Alternative: open in new tab first
-                                            window.open(selectedCreation.imageUrl, '_blank');
-                                            // Trigger download
+                                            // Trigger download directly without opening a new tab
                                             document.body.appendChild(a);
                                             a.click();
                                             document.body.removeChild(a);
