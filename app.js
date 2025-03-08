@@ -320,15 +320,32 @@ const BlenderApp = () => {
 
     const fetchAvatarAsDataUrl = async (avatarUrl) => {
         try {
-            // Create a canvas to convert the image
-            const response = await fetch(avatarUrl);
-            const blob = await response.blob();
+            // Use a proxy approach to avoid CORS issues
+            const img = document.createElement('img');
             
             return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result);
-                reader.onerror = reject;
-                reader.readAsDataURL(blob);
+                img.onload = () => {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0);
+                        resolve(canvas.toDataURL('image/png'));
+                    } catch (err) {
+                        console.error('Error converting image to data URL:', err);
+                        reject(err);
+                    }
+                };
+                
+                img.onerror = (err) => {
+                    console.error('Error loading avatar:', err);
+                    reject(new Error('Failed to load avatar image'));
+                };
+                
+                // Set crossOrigin to anonymous to handle CORS properly
+                img.crossOrigin = 'anonymous';
+                img.src = avatarUrl;
             });
         } catch (error) {
             console.error('Error fetching avatar:', error);
@@ -341,6 +358,7 @@ const BlenderApp = () => {
         if (usersInBlender.length === 0) return;
         
         setIsBlending(true);
+        let hasErrors = false;
         
         try {
             // Analyze each user's avatar image
@@ -359,6 +377,7 @@ const BlenderApp = () => {
                         username: user.username,
                         description: `A profile picture for user ${user.username}`
                     });
+                    hasErrors = true;
                     continue;
                 }
                 
@@ -389,6 +408,7 @@ const BlenderApp = () => {
                     } catch (error) {
                         console.error(`Error analyzing image for ${user.username} (attempt ${retryCount + 1}):`, error);
                         retryCount++;
+                        hasErrors = true;
                         // Wait before retrying
                         if (retryCount < 3) {
                             await new Promise(resolve => setTimeout(resolve, 1000));
@@ -408,6 +428,11 @@ const BlenderApp = () => {
                         description: `A profile picture for user ${user.username}`
                     });
                 }
+            }
+            
+            // Don't proceed with blending if we had errors
+            if (hasErrors && imageAnalyses.filter(a => a.description.startsWith('A profile picture for user')).length > 1) {
+                throw new Error("Failed to analyze most avatar images. Please try again with fewer users.");
             }
             
             // Combine analyses into a detailed prompt for the blended image
