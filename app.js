@@ -10,13 +10,13 @@ const BlenderApp = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [page, setPage] = useState(1);
     const [searchTerm, setSearchTerm] = useState("");
-    const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
     const [hasMore, setHasMore] = useState(false);
     const [hasPrevious, setHasPrevious] = useState(false);
     const [loadingMore, setLoadingMore] = useState(false);
+    const [allSearchResults, setAllSearchResults] = useState([]);
+    const [currentSearchPage, setCurrentSearchPage] = useState(1);
     const blenderRef = useRef(null);
     const room = useRef(null);
-    const searchTimeoutRef = useRef(null);
 
     useEffect(() => {
         // Create WebSocket connection
@@ -46,29 +46,6 @@ const BlenderApp = () => {
             });
         }
     }, [room.current]);
-
-    useEffect(() => {
-        // Clear previous timeout
-        if (searchTimeoutRef.current) {
-            clearTimeout(searchTimeoutRef.current);
-        }
-        
-        // Set a new timeout
-        searchTimeoutRef.current = setTimeout(() => {
-            setDebouncedSearchTerm(searchTerm);
-        }, 500); // 500ms delay
-        
-        // Cleanup function
-        return () => {
-            if (searchTimeoutRef.current) {
-                clearTimeout(searchTimeoutRef.current);
-            }
-        };
-    }, [searchTerm]);
-    
-    useEffect(() => {
-        fetchFollowingUsers(1, debouncedSearchTerm);
-    }, [debouncedSearchTerm]);
 
     const fetchFollowingUsers = async (pageNum = 1, search = "") => {
         try {
@@ -124,11 +101,19 @@ const BlenderApp = () => {
                     user.username.toLowerCase().includes(search.toLowerCase())
                 );
                 
-                setFollowingUsers(filteredUsers);
-                setHasMore(false); // No more pages when searching
-                setHasPrevious(false); // No previous pages when searching
+                setAllSearchResults(filteredUsers);
+                
+                // Paginate the filtered results - show only 20 at a time
+                const startIndex = (pageNum - 1) * 20;
+                const endIndex = startIndex + 20;
+                const paginatedResults = filteredUsers.slice(startIndex, endIndex);
+                
+                setFollowingUsers(paginatedResults);
+                setHasMore(endIndex < filteredUsers.length);
+                setHasPrevious(pageNum > 1);
                 setIsLoading(false);
                 setLoadingMore(false);
+                setCurrentSearchPage(pageNum);
                 return;
             }
             
@@ -173,31 +158,71 @@ const BlenderApp = () => {
         }
     };
     
+    useEffect(() => {
+        fetchFollowingUsers(1, searchTerm);
+    }, [searchTerm]);
+    
     const goToNextPage = () => {
-        if (hasMore && !loadingMore) {
+        if (searchTerm) {
+            if (currentSearchPage * 20 < allSearchResults.length) {
+                setCurrentSearchPage(prevPage => {
+                    const nextPage = prevPage + 1;
+                    const startIndex = (nextPage - 1) * 20;
+                    const endIndex = startIndex + 20;
+                    setFollowingUsers(allSearchResults.slice(startIndex, endIndex));
+                    setHasPrevious(true);
+                    setHasMore(endIndex < allSearchResults.length);
+                    return nextPage;
+                });
+            }
+        } else if (hasMore && !loadingMore) {
             setPage(prevPage => {
                 const nextPage = prevPage + 1;
-                fetchFollowingUsers(nextPage, debouncedSearchTerm);
+                fetchFollowingUsers(nextPage, searchTerm);
                 return nextPage;
             });
         }
     };
     
     const goToPreviousPage = () => {
-        if (page > 1 && !loadingMore) {
+        if (searchTerm) {
+            if (currentSearchPage > 1) {
+                setCurrentSearchPage(prevPage => {
+                    const prevPageNum = prevPage - 1;
+                    const startIndex = (prevPageNum - 1) * 20;
+                    const endIndex = startIndex + 20;
+                    setFollowingUsers(allSearchResults.slice(startIndex, endIndex));
+                    setHasPrevious(prevPageNum > 1);
+                    setHasMore(true);
+                    return prevPageNum;
+                });
+            }
+        } else if (page > 1 && !loadingMore) {
             setPage(prevPage => {
                 const prevPageNum = prevPage - 1;
-                fetchFollowingUsers(prevPageNum, debouncedSearchTerm);
+                fetchFollowingUsers(prevPageNum, searchTerm);
                 return prevPageNum;
             });
         }
     };
     
     const loadMoreUsers = () => {
-        if (hasMore && !loadingMore) {
+        if (searchTerm) {
+            if (currentSearchPage * 20 < allSearchResults.length) {
+                setCurrentSearchPage(prevPage => {
+                    const nextPage = prevPage + 1;
+                    const startIndex = (nextPage - 1) * 20;
+                    const endIndex = startIndex + 20;
+                    setFollowingUsers(allSearchResults.slice(startIndex, endIndex));
+                    setHasPrevious(true);
+                    setHasMore(endIndex < allSearchResults.length);
+                    return nextPage;
+                });
+            }
+        } else if (hasMore && !loadingMore) {
             setPage(prevPage => {
                 const nextPage = prevPage + 1;
-                fetchFollowingUsers(nextPage, debouncedSearchTerm);
+                fetchFollowingUsers(nextPage, searchTerm);
                 return nextPage;
             });
         }
