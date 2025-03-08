@@ -418,12 +418,16 @@ const BlenderApp = () => {
                 let analysis = null;
                 
                 // First get the avatar as data URL to avoid CORS issues
+                // Add a delay between requests to avoid overwhelming the server
+                await new Promise(resolve => setTimeout(resolve, 500 * retryCount));
                 const avatarDataUrl = await fetchAvatarAsDataUrl(user.avatarUrl);
                 
                 // We'll always have a data URL now (either real image or fallback)
                 
                 while (retryCount < 3 && !success) {
                     try {
+                        // Add delay between analysis requests
+                        await new Promise(resolve => setTimeout(resolve, 1000));
                         analysis = await websim.chat.completions.create({
                             messages: [
                                 {
@@ -452,7 +456,7 @@ const BlenderApp = () => {
                         hasErrors = true;
                         // Wait before retrying
                         if (retryCount < 3) {
-                            await new Promise(resolve => setTimeout(resolve, 1000));
+                            await new Promise(resolve => setTimeout(resolve, 2000));
                         }
                     }
                 }
@@ -475,6 +479,9 @@ const BlenderApp = () => {
             if (hasErrors && imageAnalyses.filter(a => a.description.startsWith('A profile picture for user')).length > 1) {
                 throw new Error("Failed to analyze most avatar images. Please try again with fewer users.");
             }
+            
+            // Add delay before starting the next phase
+            await new Promise(resolve => setTimeout(resolve, 1000));
             
             // Combine analyses into a detailed prompt for the blended image
             const analysisText = imageAnalyses.map(a => `${a.username}: ${a.description}`).join('\n\n');
