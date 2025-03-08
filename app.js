@@ -321,35 +321,134 @@ const BlenderApp = () => {
 
     const fetchAvatarAsDataUrl = async (avatarUrl) => {
         try {
-            // Instead of trying to load the image from the server,
-            // Generate a local avatar with the username
-            const username = avatarUrl.split('/').pop().split('?')[0]; // Get username from URL
+            // Create an image element
+            const img = document.createElement('img');
             
-            // Generate a color based on username for consistency
-            const hash = username.split('').reduce((a, b) => {
-                return a + b.charCodeAt(0);
-            }, 0);
-            
-            // Create canvas for the avatar
-            const canvas = document.createElement('canvas');
-            canvas.width = 200;
-            canvas.height = 200;
-            const ctx = canvas.getContext('2d');
-            
-            // Fill background with a color derived from username
-            ctx.fillStyle = `hsl(${hash % 360}, 70%, 60%)`;
-            ctx.fillRect(0, 0, 200, 200);
-            
-            // Add text initial
-            ctx.fillStyle = 'white';
-            ctx.font = 'bold 100px Arial';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(username.charAt(0).toUpperCase(), 100, 100);
-            
-            return canvas.toDataURL('image/png');
+            return new Promise((resolve, reject) => {
+                let retryCount = 0;
+                const maxRetries = 3;
+                
+                const loadImage = () => {
+                    img.onload = () => {
+                        try {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = img.width;
+                            canvas.height = img.height;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0);
+                            resolve(canvas.toDataURL('image/png'));
+                        } catch (err) {
+                            console.error('Error converting image to data URL:', err);
+                            createFallbackAvatar(avatarUrl, resolve);
+                        }
+                    };
+                    
+                    img.onerror = async (err) => {
+                        console.error('Error loading avatar:', err);
+                        if (retryCount < maxRetries) {
+                            retryCount++;
+                            console.log(`Retry attempt ${retryCount} for ${avatarUrl} after 5 seconds delay`);
+                            // Wait 5 seconds before retry
+                            await new Promise(resolve => setTimeout(resolve, 5000));
+                            // Add cache-busting parameter to avoid cached error responses
+                            img.src = `${avatarUrl}?retry=${retryCount}&t=${Date.now()}`;
+                        } else {
+                            // If we've tried 3 times and still failing, get user information through LLM
+                            try {
+                                const username = avatarUrl.split('/').pop().split('?')[0];
+                                console.log(`Getting profile information for ${username} using LLM`);
+                                
+                                const userInfo = await websim.chat.completions.create({
+                                    messages: [
+                                        {
+                                            role: "system",
+                                            content: "You are an assistant that creates a brief profile description for users based on their username."
+                                        },
+                                        {
+                                            role: "user",
+                                            content: `Create a brief profile description for a user with the username: ${username}. What might their avatar look like? What might their interests be?`
+                                        }
+                                    ]
+                                });
+                                
+                                // Create a canvas with text description from LLM
+                                createTextBasedAvatar(username, userInfo.content, resolve);
+                            } catch (llmError) {
+                                console.error('Error getting user info from LLM:', llmError);
+                                createFallbackAvatar(avatarUrl, resolve);
+                            }
+                        }
+                    };
+                    
+                    // Set crossOrigin to anonymous to avoid CORS issues
+                    img.crossOrigin = 'anonymous';
+                    img.src = avatarUrl;
+                };
+                
+                const createFallbackAvatar = (url, resolver) => {
+                    // Generate a fallback avatar with a colored background and initial
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 200;
+                    canvas.height = 200;
+                    const ctx = canvas.getContext('2d');
+                    
+                    // Generate a color based on username for consistency
+                    const username = url.split('/').pop().split('?')[0];
+                    const hash = username.split('').reduce((a, b) => {
+                        return a + b.charCodeAt(0);
+                    }, 0);
+                    ctx.fillStyle = `hsl(${hash % 360}, 70%, 60%)`;
+                    ctx.fillRect(0, 0, 200, 200);
+                    
+                    // Add text initial
+                    ctx.fillStyle = 'white';
+                    ctx.font = 'bold 100px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(username.charAt(0).toUpperCase(), 100, 100);
+                    resolver(canvas.toDataURL('image/png'));
+                };
+                
+                const createTextBasedAvatar = (username, description, resolver) => {
+                    // Create a canvas with text description from LLM
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 200;
+                    canvas.height = 200;
+                    const ctx = canvas.getContext('2d');
+                    
+                    // Background color based on username
+                    const hash = username.split('').reduce((a, b) => {
+                        return a + b.charCodeAt(0);
+                    }, 0);
+                    ctx.fillStyle = `hsl(${hash % 360}, 70%, 60%)`;
+                    ctx.fillRect(0, 0, 200, 200);
+                    
+                    // Add username at the top
+                    ctx.fillStyle = 'white';
+                    ctx.font = 'bold 24px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'top';
+                    ctx.fillText(username, 100, 20);
+                    
+                    // Add text initial in the center
+                    ctx.font = 'bold 80px Arial';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(username.charAt(0).toUpperCase(), 100, 85);
+                    
+                    // Add description snippet at the bottom
+                    ctx.font = '12px Arial';
+                    ctx.textBaseline = 'bottom';
+                    // Truncate description to fit
+                    const shortDesc = description.substring(0, 40) + (description.length > 40 ? '...' : '');
+                    ctx.fillText(shortDesc, 100, 180);
+                    
+                    resolver(canvas.toDataURL('image/png'));
+                };
+                
+                loadImage();
+            });
         } catch (error) {
-            console.error('Error creating avatar:', error);
+            console.error('Error fetching avatar:', error);
             // Return a fallback image with a colored background
             const canvas = document.createElement('canvas');
             canvas.width = 200;
@@ -510,7 +609,6 @@ const BlenderApp = () => {
                 setIsPouring(false);
                 setUsersInBlender([]);
             }, 2000);
-            
         } catch (error) {
             console.error("Error in blending process:", error);
             setIsBlending(false);
