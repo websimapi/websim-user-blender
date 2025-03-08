@@ -205,6 +205,23 @@ body {
     display: block;
 }
 
+.download-button {
+    background-color: #2ecc71;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 16px;
+    margin: 0 auto 15px;
+    display: block;
+    transition: background-color 0.3s;
+}
+
+.download-button:hover {
+    background-color: #27ae60;
+}
+
 .loading-spinner {
     border: 5px solid #f3f3f3;
     border-top: 5px solid #3498db;

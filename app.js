@@ -864,6 +864,19 @@ const BlenderApp = () => {
                                 >
                                     Remix this blend
                                 </button>
+                                <button 
+                                    className="download-button"
+                                    onClick={() => {
+                                        const link = document.createElement('a');
+                                        link.href = selectedCreation.imageUrl;
+                                        link.download = `blend-${selectedCreation.users.join('-')}.png`;
+                                        document.body.appendChild(link);
+                                        link.click();
+                                        document.body.removeChild(link);
+                                    }}
+                                >
+                                    Download to Desktop
+                                </button>
                                 <div className="modal-users">
                                     {selectedCreation.users.map((username, index) => (
                                         <div key={index} className="modal-user">
