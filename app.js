@@ -8,11 +8,11 @@ const BlenderApp = () => {
     const [blendedResult, setBlendedResult] = useState(null);
     const [creations, setCreations] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [loadingMore, setLoadingMore] = useState(false);
-    const [hasMore, setHasMore] = useState(false);
-    const [searchTerm, setSearchTerm] = useState("");
-    const [nextCursor, setNextCursor] = useState(null);
     const [page, setPage] = useState(1);
+    const [searchTerm, setSearchTerm] = useState("");
+    const [hasMore, setHasMore] = useState(false);
+    const [hasPrevious, setHasPrevious] = useState(false);
+    const [loadingMore, setLoadingMore] = useState(false);
     const blenderRef = useRef(null);
     const room = useRef(null);
 
@@ -21,7 +21,7 @@ const BlenderApp = () => {
         room.current = new WebsimSocket();
         
         // Fetch following users
-        fetchFollowingUsers();
+        fetchFollowingUsers(1, searchTerm);
         
         // Load saved creations
         loadCreations();
@@ -45,7 +45,7 @@ const BlenderApp = () => {
         }
     }, [room.current]);
 
-    const fetchFollowingUsers = async (isLoadMore = false, search = "") => {
+    const fetchFollowingUsers = async (pageNum = 1, search = "") => {
         try {
             const user = await window.websim.getUser();
             if (!user) {
@@ -53,17 +53,9 @@ const BlenderApp = () => {
                 return;
             }
             
-            setLoadingMore(isLoadMore);
+            setLoadingMore(pageNum > 1);
             const pageSize = 20;
-            
-            let apiUrl = `/api/v1/users/${user.username}/following?first=${pageSize}`;
-            
-            // Add cursor for pagination if loading more
-            if (isLoadMore && nextCursor) {
-                apiUrl += `&after=${nextCursor}`;
-            }
-            
-            const response = await fetch(apiUrl);
+            const response = await fetch(`/api/v1/users/${user.username}/following?first=${pageSize}${pageNum > 1 ? `&after=${(pageNum-1) * pageSize}` : ''}`);
             const data = await response.json();
             
             if (!data.following || !data.following.data) {
@@ -81,15 +73,9 @@ const BlenderApp = () => {
                 }))
                 .filter(user => !search || user.username.toLowerCase().includes(search.toLowerCase()));
             
-            if (isLoadMore) {
-                setFollowingUsers(prev => [...prev, ...followingData]);
-            } else {
-                setFollowingUsers(followingData);
-            }
-            
-            // Save the end cursor for next page
-            setNextCursor(data.following.meta.end_cursor);
+            setFollowingUsers(followingData);
             setHasMore(data.following.meta.has_next_page);
+            setHasPrevious(pageNum > 1);
             setIsLoading(false);
             setLoadingMore(false);
         } catch (error) {
@@ -100,14 +86,36 @@ const BlenderApp = () => {
     };
     
     useEffect(() => {
-        // Reset cursor and fetch with new search term
-        setNextCursor(null);
-        fetchFollowingUsers(false, searchTerm);
+        fetchFollowingUsers(1, searchTerm);
     }, [searchTerm]);
+    
+    const goToNextPage = () => {
+        if (hasMore && !loadingMore) {
+            setPage(prevPage => {
+                const nextPage = prevPage + 1;
+                fetchFollowingUsers(nextPage, searchTerm);
+                return nextPage;
+            });
+        }
+    };
+    
+    const goToPreviousPage = () => {
+        if (page > 1 && !loadingMore) {
+            setPage(prevPage => {
+                const prevPageNum = prevPage - 1;
+                fetchFollowingUsers(prevPageNum, searchTerm);
+                return prevPageNum;
+            });
+        }
+    };
     
     const loadMoreUsers = () => {
         if (hasMore && !loadingMore) {
-            fetchFollowingUsers(true, searchTerm);
+            setPage(prevPage => {
+                const nextPage = prevPage + 1;
+                fetchFollowingUsers(nextPage, searchTerm);
+                return nextPage;
+            });
         }
     };
     
@@ -405,15 +413,22 @@ const BlenderApp = () => {
                                 ))}
                             </div>
                             
-                            {hasMore && (
+                            <div className="pagination-controls">
                                 <button 
-                                    className="load-more-button" 
-                                    onClick={loadMoreUsers}
-                                    disabled={loadingMore}
+                                    className="pagination-button" 
+                                    onClick={goToPreviousPage}
+                                    disabled={!hasPrevious || loadingMore}
                                 >
-                                    {loadingMore ? 'Loading...' : 'Load More'}
+                                    Previous
                                 </button>
-                            )}
+                                <button 
+                                    className="pagination-button" 
+                                    onClick={goToNextPage}
+                                    disabled={!hasMore || loadingMore}
+                                >
+                                    {loadingMore ? 'Loading...' : 'Next'}
+                                </button>
+                            </div>
                         </>
                     )}
                     
