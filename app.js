@@ -580,7 +580,45 @@ const BlenderApp = () => {
     const openCreationDetails = (creation) => {
         setSelectedCreation(creation);
     };
-    
+
+    const remixBlend = (creation, closeModalAfter = false) => {
+        if (!creation || !creation.users || creation.users.length === 0) return;
+        
+        // Clear current blender first
+        setUsersInBlender([]);
+        
+        // For each user in the creation, add them to the blender
+        creation.users.forEach(username => {
+            const rect = blenderRef.current.getBoundingClientRect();
+            const x = Math.random() * (rect.width - 40);
+            const y = Math.random() * (rect.height - 40);
+            
+            const user = {
+                id: `remix-${Date.now()}-${username}`,
+                username: username,
+                avatarUrl: `https://images.websim.ai/avatar/${username}`,
+                position: { x, y },
+                velocity: {
+                    x: (Math.random() - 0.5) * 4,
+                    y: (Math.random() - 0.5) * 4
+                }
+            };
+            
+            setUsersInBlender(prev => [...prev, user]);
+        });
+        
+        // Close modal if requested
+        if (closeModalAfter) {
+            closeModal();
+        }
+        
+        // Scroll to the blender section
+        const blenderSection = document.querySelector('.blender-section');
+        if (blenderSection) {
+            blenderSection.scrollIntoView({ behavior: 'smooth' });
+        }
+    };
+
     const closeModal = () => {
         setSelectedCreation(null);
     };
@@ -779,12 +817,24 @@ const BlenderApp = () => {
                                     <div 
                                         key={creation.id} 
                                         className="creation-item"
-                                        onClick={() => openCreationDetails(creation)}
                                     >
-                                        <img src={creation.imageUrl} alt="Blended creation" />
+                                        <img 
+                                            src={creation.imageUrl} 
+                                            alt="Blended creation" 
+                                            onClick={() => openCreationDetails(creation)}
+                                        />
                                         <div className="creation-info">
                                             <p>Users: {creation.users.length}</p>
                                             <p>By: {creation.username}</p>
+                                            <button 
+                                                className="remix-button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    remixBlend(creation);
+                                                }}
+                                            >
+                                                Remix
+                                            </button>
                                         </div>
                                     </div>
                                 ))}
@@ -808,6 +858,12 @@ const BlenderApp = () => {
                                         Users excluded due to errors: {selectedCreation.excludedUsers.join(', ')}
                                     </p>
                                 )}
+                                <button 
+                                    className="remix-button modal-remix-button"
+                                    onClick={() => remixBlend(selectedCreation, true)}
+                                >
+                                    Remix this blend
+                                </button>
                                 <div className="modal-users">
                                     {selectedCreation.users.map((username, index) => (
                                         <div key={index} className="modal-user">
