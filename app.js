@@ -372,31 +372,31 @@ const BlenderApp = () => {
                         }
                     };
                     
+                    const createFallbackAvatar = (url, resolver) => {
+                        // Generate a fallback avatar with a colored background and initial
+                        const canvas = document.createElement('canvas');
+                        canvas.width = 200;
+                        canvas.height = 200;
+                        const ctx = canvas.getContext('2d');
+                        // Generate a color based on username for consistency
+                        const username = url.split('/').pop();
+                        const hash = username.split('').reduce((a, b) => {
+                            return a + b.charCodeAt(0);
+                        }, 0);
+                        ctx.fillStyle = `hsl(${hash % 360}, 70%, 60%)`;
+                        ctx.fillRect(0, 0, 200, 200);
+                        // Add text initial
+                        ctx.fillStyle = 'white';
+                        ctx.font = 'bold 100px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(username.charAt(0).toUpperCase(), 100, 100);
+                        resolver(canvas.toDataURL('image/png'));
+                    };
+                    
                     // Initial load attempt with crossOrigin attribute
                     img.crossOrigin = 'anonymous';
                     img.src = avatarUrl;
-                };
-                
-                const createFallbackAvatar = (url, resolver) => {
-                    // Generate a fallback avatar with a colored background and initial
-                    const canvas = document.createElement('canvas');
-                    canvas.width = 200;
-                    canvas.height = 200;
-                    const ctx = canvas.getContext('2d');
-                    // Generate a color based on username for consistency
-                    const username = url.split('/').pop();
-                    const hash = username.split('').reduce((a, b) => {
-                        return a + b.charCodeAt(0);
-                    }, 0);
-                    ctx.fillStyle = `hsl(${hash % 360}, 70%, 60%)`;
-                    ctx.fillRect(0, 0, 200, 200);
-                    // Add text initial
-                    ctx.fillStyle = 'white';
-                    ctx.font = 'bold 100px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(username.charAt(0).toUpperCase(), 100, 100);
-                    resolver(canvas.toDataURL('image/png'));
                 };
                 
                 loadImage();
@@ -852,6 +852,31 @@ const BlenderApp = () => {
                                     alt="Blended creation" 
                                     className="modal-image"
                                 />
+                                <div className="modal-actions">
+                                    <button 
+                                        className="download-button"
+                                        onClick={() => {
+                                            // Create a temporary anchor element
+                                            const a = document.createElement('a');
+                                            a.href = selectedCreation.imageUrl;
+                                            a.download = `blended-avatar-${selectedCreation.users.join('-')}.png`;
+                                            // Alternative: open in new tab first
+                                            window.open(selectedCreation.imageUrl, '_blank');
+                                            // Trigger download
+                                            document.body.appendChild(a);
+                                            a.click();
+                                            document.body.removeChild(a);
+                                        }}
+                                    >
+                                        Download Image
+                                    </button>
+                                    <button 
+                                        className="remix-button modal-remix-button"
+                                        onClick={() => remixBlend(selectedCreation, true)}
+                                    >
+                                        Remix this blend
+                                    </button>
+                                </div>
                                 <p>Created by: <strong>{selectedCreation.username}</strong></p>
                                 {selectedCreation.excludedUsers && selectedCreation.excludedUsers.length > 0 && (
                                     <p className="excluded-users">
@@ -863,19 +888,6 @@ const BlenderApp = () => {
                                     onClick={() => remixBlend(selectedCreation, true)}
                                 >
                                     Remix this blend
-                                </button>
-                                <button 
-                                    className="download-button"
-                                    onClick={() => {
-                                        const link = document.createElement('a');
-                                        link.href = selectedCreation.imageUrl;
-                                        link.download = `blend-${selectedCreation.users.join('-')}.png`;
-                                        document.body.appendChild(link);
-                                        link.click();
-                                        document.body.removeChild(link);
-                                    }}
-                                >
-                                    Download to Desktop
                                 </button>
                                 <div className="modal-users">
                                     {selectedCreation.users.map((username, index) => (

@@ -205,23 +205,6 @@ body {
     display: block;
 }
 
-.download-button {
-    background-color: #2ecc71;
-    color: white;
-    border: none;
-    padding: 8px 15px;
-    border-radius: 3px;
-    cursor: pointer;
-    font-size: 16px;
-    margin: 0 auto 15px;
-    display: block;
-    transition: background-color 0.3s;
-}
-
-.download-button:hover {
-    background-color: #27ae60;
-}
-
 .loading-spinner {
     border: 5px solid #f3f3f3;
     border-top: 5px solid #3498db;
@@ -420,6 +403,28 @@ summary {
     margin: 0 auto 20px;
     display: block;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.download-button {
+    background-color: #2ecc71;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s;
+}
+
+.download-button:hover {
+    background-color: #27ae60;
 }
 
 .modal-details {
