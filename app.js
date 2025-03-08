@@ -6,6 +6,7 @@ const BlenderApp = () => {
     const [usersInHolding, setUsersInHolding] = useState([]);
     const [isBlending, setIsBlending] = useState(false);
     const [isPouring, setIsPouring] = useState(false);
+    const [isFillingAvatar, setIsFillingAvatar] = useState(false);
     const [blendedResult, setBlendedResult] = useState(null);
     const [creations, setCreations] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -580,18 +581,27 @@ const BlenderApp = () => {
                 username: room.current.party.client.username
             });
             
+            // Start pour sequence after blending
             setIsBlending(false);
             setIsPouring(true);
             
-            // Reset after pouring animation completes
+            // Start filling avatar animation after pouring completes
             setTimeout(() => {
                 setIsPouring(false);
-                setUsersInBlender([]);
+                setIsFillingAvatar(true);
+                
+                // Reset after all animations complete
+                setTimeout(() => {
+                    setIsFillingAvatar(false);
+                    setUsersInBlender([]);
+                }, 2000);
             }, 2000);
             
         } catch (error) {
             console.error("Error in blending process:", error);
             setIsBlending(false);
+            setIsPouring(false);
+            setIsFillingAvatar(false);
             
             // Show a user-friendly error message
             alert(error.message || "There was an error creating your blend. Please try again with fewer users.");
@@ -902,6 +912,7 @@ const BlenderApp = () => {
                                     className={`blender ${isBlending ? 'shake-animation' : ''} ${isPouring ? 'pour-animation' : ''}`}
                                     ref={blenderRef}
                                 >
+                                    <div className="blender-blade"></div>
                                     {usersInBlender.map((user, index) => (
                                         <div 
                                             key={`${user.id}-${index}`}
@@ -926,7 +937,7 @@ const BlenderApp = () => {
                             <button 
                                 className="blend-button"
                                 onClick={handleBlend}
-                                disabled={usersInBlender.length === 0 || isBlending || isPouring}
+                                disabled={usersInBlender.length === 0 || isBlending || isPouring || isFillingAvatar}
                             >
                                 {isBlending ? 'Blending...' : 'Blend!'}
                             </button>
@@ -943,14 +954,19 @@ const BlenderApp = () => {
                                 </p>
                             )}
                             <div className="pouring-animation">
-                                {isPouring ? (
+                                {isPouring || isBlending ? (
                                     <div className="loading-spinner"></div>
                                 ) : (
-                                    <img 
-                                        src={blendedResult.imageUrl} 
-                                        alt="Blended result"
-                                        className="blended-avatar drop-animation"
-                                    />
+                                    <div className="pour-container">
+                                        {isPouring && <div className="pour-stream"></div>}
+                                        <div className="avatar-frame">
+                                            <img 
+                                                src={blendedResult.imageUrl} 
+                                                alt="Blended result"
+                                                className={`blended-avatar ${isFillingAvatar ? 'filling-animation visible' : isPouring ? '' : 'visible'}`}
+                                            />
+                                        </div>
+                                    </div>
                                 )}
                             </div>
                             <details>
