@@ -423,3 +423,38 @@ summary {
     margin-top: 5px;
     text-align: center;
 }
+
+.custom-user-input {
+    display: flex;
+    margin-bottom: 15px;
+    justify-content: center;
+    gap: 10px;
+}
+
+.custom-username-input {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    width: 200px;
+    font-size: 14px;
+}
+
+.add-custom-user-btn {
+    background-color: #3498db;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.3s;
+}
+
+.add-custom-user-btn:hover {
+    background-color: #2980b9;
+}
+
+.add-custom-user-btn:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+}

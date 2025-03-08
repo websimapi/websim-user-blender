@@ -16,6 +16,7 @@ const BlenderApp = () => {
     const [allSearchResults, setAllSearchResults] = useState([]);
     const [currentSearchPage, setCurrentSearchPage] = useState(1);
     const [selectedCreation, setSelectedCreation] = useState(null);
+    const [customUsername, setCustomUsername] = useState("");
     const blenderRef = useRef(null);
     const room = useRef(null);
 
@@ -56,6 +57,10 @@ const BlenderApp = () => {
                 return;
             }
             
+            // Set loading state only on initial load, not when typing search
+            if (pageNum === 1 && !searchTerm) {
+                setIsLoading(true);
+            }
             setLoadingMore(pageNum > 1);
             
             // If searching, load all users and then filter
@@ -160,7 +165,12 @@ const BlenderApp = () => {
     };
     
     useEffect(() => {
-        fetchFollowingUsers(1, searchTerm);
+        // Only fetch when search term is stable (after a short delay)
+        const searchDebounce = setTimeout(() => {
+            fetchFollowingUsers(1, searchTerm);
+        }, 300);
+        
+        return () => clearTimeout(searchDebounce);
     }, [searchTerm]);
     
     const goToNextPage = () => {
@@ -575,11 +585,38 @@ const BlenderApp = () => {
         setSelectedCreation(null);
     };
 
+    const addCustomUser = () => {
+        if (!customUsername || customUsername.trim() === "") return;
+        
+        // Check if custom user is already in blender
+        if (usersInBlender.some(u => u.username.toLowerCase() === customUsername.toLowerCase())) {
+            return;
+        }
+        
+        const rect = blenderRef.current.getBoundingClientRect();
+        const x = Math.random() * (rect.width - 40);
+        const y = Math.random() * (rect.height - 40);
+        
+        const customUser = {
+            id: `custom-${Date.now()}`,
+            username: customUsername.trim(),
+            avatarUrl: `https://images.websim.ai/avatar/${customUsername.trim()}`,
+            position: { x, y },
+            velocity: {
+                x: (Math.random() - 0.5) * 4,
+                y: (Math.random() - 0.5) * 4
+            }
+        };
+        
+        setUsersInBlender(prev => [...prev, customUser]);
+        setCustomUsername("");
+    };
+
     return (
         <div className="container">
             <h1 className="title">User Blender</h1>
             
-            {isLoading && page === 1 ? (
+            {isLoading && page === 1 && !searchTerm ? (
                 <div className="loading-spinner"></div>
             ) : (
                 <>
@@ -594,7 +631,11 @@ const BlenderApp = () => {
                         />
                     </div>
                     
-                    {followingUsers.length === 0 ? (
+                    {loadingMore && (
+                        <div className="loading-spinner"></div>
+                    )}
+                    
+                    {followingUsers.length === 0 && !loadingMore ? (
                         <p>{searchTerm ? "No users match your search." : "You aren't following anyone yet."}</p>
                     ) : (
                         <>
@@ -635,6 +676,25 @@ const BlenderApp = () => {
                     
                     <div className="blender-section">
                         <h2>Drag users to blend</h2>
+                        
+                        <div className="custom-user-input">
+                            <input
+                                type="text"
+                                placeholder="Add custom username..."
+                                value={customUsername}
+                                onChange={(e) => setCustomUsername(e.target.value)}
+                                onKeyPress={(e) => e.key === 'Enter' && addCustomUser()}
+                                className="custom-username-input"
+                            />
+                            <button
+                                className="add-custom-user-btn"
+                                onClick={addCustomUser}
+                                disabled={!customUsername.trim()}
+                            >
+                                Add
+                            </button>
+                        </div>
+                        
                         <div 
                             className="blender-container"
                             onDragOver={handleDragOver}
