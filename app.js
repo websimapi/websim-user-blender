@@ -348,16 +348,29 @@ const BlenderApp = () => {
                         if (retryCount < maxRetries) {
                             retryCount++;
                             console.log(`Retry attempt ${retryCount} for ${avatarUrl}`);
-                            // Try with CORS proxy on retry
-                            img.src = `https://corsproxy.io/?${encodeURIComponent(`${avatarUrl}?retry=${retryCount}&t=${Date.now()}`)}`;
+                            
+                            // Try different CORS proxies on each retry
+                            if (retryCount === 1) {
+                                // First retry: try corsProxy.io
+                                const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(avatarUrl);
+                                img.src = proxyUrl;
+                            } else if (retryCount === 2) {
+                                // Second retry: try cors.lol
+                                const proxyUrl = 'https://api.cors.lol/?url=' + encodeURIComponent(avatarUrl);
+                                img.src = proxyUrl;
+                            } else {
+                                // Third retry: try codetabs proxy
+                                const proxyUrl = 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(avatarUrl);
+                                img.src = proxyUrl;
+                            }
                         } else {
                             createFallbackAvatar(avatarUrl, resolve);
                         }
                     };
                     
-                    // Initial load attempt with crossOrigin attribute and CORS proxy
+                    // Initial load attempt with crossOrigin attribute
                     img.crossOrigin = 'anonymous';
-                    img.src = `https://corsproxy.io/?${encodeURIComponent(avatarUrl)}`;
+                    img.src = avatarUrl;
                 };
                 
                 const createFallbackAvatar = (url, resolver) => {
@@ -745,7 +758,7 @@ const BlenderApp = () => {
                                     {selectedCreation.users.map((username, index) => (
                                         <div key={index} className="modal-user">
                                             <img 
-                                                src={`https://corsproxy.io/?${encodeURIComponent(`https://images.websim.ai/avatar/${username}`)}`}
+                                                src={`https://images.websim.ai/avatar/${username}`} 
                                                 alt={username}
                                                 onError={(e) => {
                                                     // Generate a simple colored avatar with initial if image fails to load
