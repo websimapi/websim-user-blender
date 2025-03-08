@@ -340,7 +340,20 @@ const BlenderApp = () => {
                             // Draw with proper scaling to fit the canvas
                             ctx.fillStyle = '#ffffff';
                             ctx.fillRect(0, 0, size, size);
-                            ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, size, size);
+                            
+                            // Skip drawing the image which might cause CORS issues
+                            // Instead, create a colored avatar with the user's initial
+                            const username = avatarUrl.split('/').pop();
+                            const hash = username.split('').reduce((a, b) => {
+                                return a + b.charCodeAt(0);
+                            }, 0);
+                            ctx.fillStyle = `hsl(${hash % 360}, 70%, 60%)`;
+                            ctx.fillRect(0, 0, size, size);
+                            ctx.fillStyle = 'white';
+                            ctx.font = 'bold 100px Arial';
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'middle';
+                            ctx.fillText(username.charAt(0).toUpperCase(), size/2, size/2);
                             resolve(canvas.toDataURL('image/png'));
                         } catch (err) {
                             console.error('Error converting image to data URL:', err);
