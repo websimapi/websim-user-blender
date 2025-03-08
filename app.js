@@ -15,6 +15,7 @@ const BlenderApp = () => {
     const [loadingMore, setLoadingMore] = useState(false);
     const [allSearchResults, setAllSearchResults] = useState([]);
     const [currentSearchPage, setCurrentSearchPage] = useState(1);
+    const [selectedCreation, setSelectedCreation] = useState(null);
     const blenderRef = useRef(null);
     const room = useRef(null);
 
@@ -548,6 +549,14 @@ const BlenderApp = () => {
         setUsersInBlender(prev => prev.filter(user => user.id !== userId));
     };
 
+    const openCreationDetails = (creation) => {
+        setSelectedCreation(creation);
+    };
+    
+    const closeModal = () => {
+        setSelectedCreation(null);
+    };
+
     return (
         <div className="container">
             <h1 className="title">User Blender</h1>
@@ -684,7 +693,11 @@ const BlenderApp = () => {
                             <h2>Community Blends</h2>
                             <div className="creations-gallery">
                                 {creations.map(creation => (
-                                    <div key={creation.id} className="creation-item">
+                                    <div 
+                                        key={creation.id} 
+                                        className="creation-item"
+                                        onClick={() => openCreationDetails(creation)}
+                                    >
                                         <img src={creation.imageUrl} alt="Blended creation" />
                                         <div className="creation-info">
                                             <p>Users: {creation.users.length}</p>
@@ -692,6 +705,68 @@ const BlenderApp = () => {
                                         </div>
                                     </div>
                                 ))}
+                            </div>
+                        </div>
+                    )}
+                    
+                    {selectedCreation && (
+                        <div className="modal-overlay" onClick={closeModal}>
+                            <div className="modal-content" onClick={e => e.stopPropagation()}>
+                                <button className="modal-close" onClick={closeModal}>&times;</button>
+                                <h2>Blend Details</h2>
+                                <img 
+                                    src={selectedCreation.imageUrl} 
+                                    alt="Blended creation" 
+                                    className="modal-image"
+                                />
+                                <p>Created by: <strong>{selectedCreation.username}</strong></p>
+                                <div className="modal-users">
+                                    {selectedCreation.users.map((username, index) => (
+                                        <div key={index} className="modal-user">
+                                            <img 
+                                                src={`https://images.websim.ai/avatar/${username}`} 
+                                                alt={username}
+                                                onError={(e) => {
+                                                    // Generate a simple colored avatar with initial if image fails to load
+                                                    const canvas = document.createElement('canvas');
+                                                    canvas.width = 50;
+                                                    canvas.height = 50;
+                                                    const ctx = canvas.getContext('2d');
+                                                    const hash = username.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
+                                                    ctx.fillStyle = `hsl(${hash % 360}, 70%, 60%)`;
+                                                    ctx.fillRect(0, 0, 50, 50);
+                                                    ctx.fillStyle = 'white';
+                                                    ctx.font = 'bold 25px Arial';
+                                                    ctx.textAlign = 'center';
+                                                    ctx.textBaseline = 'middle';
+                                                    ctx.fillText(username.charAt(0).toUpperCase(), 25, 25);
+                                                    e.target.src = canvas.toDataURL('image/png');
+                                                }}
+                                            />
+                                            <span className="modal-user-name">{username}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="modal-details">
+                                    <details open>
+                                        <summary>Image prompt</summary>
+                                        <p className="image-prompt">{selectedCreation.description}</p>
+                                    </details>
+                                    
+                                    {selectedCreation.analyses && (
+                                        <details>
+                                            <summary>Image analyses</summary>
+                                            <div className="analyses-list">
+                                                {selectedCreation.analyses.map((analysis, index) => (
+                                                    <div key={index} className="analysis-item">
+                                                        <h4>{analysis.username}</h4>
+                                                        <p>{analysis.description}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </details>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     )}
