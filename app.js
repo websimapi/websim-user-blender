@@ -3,6 +3,7 @@ const { useState, useEffect, useRef } = React;
 const BlenderApp = () => {
     const [followingUsers, setFollowingUsers] = useState([]);
     const [usersInBlender, setUsersInBlender] = useState([]);
+    const [usersInHolding, setUsersInHolding] = useState([]);
     const [isBlending, setIsBlending] = useState(false);
     const [isPouring, setIsPouring] = useState(false);
     const [blendedResult, setBlendedResult] = useState(null);
@@ -18,6 +19,7 @@ const BlenderApp = () => {
     const [selectedCreation, setSelectedCreation] = useState(null);
     const [customUsername, setCustomUsername] = useState("");
     const blenderRef = useRef(null);
+    const holdingCellRef = useRef(null);
     const room = useRef(null);
 
     useEffect(() => {
@@ -248,8 +250,9 @@ const BlenderApp = () => {
         }
     };
 
-    const handleDragStart = (e, user) => {
+    const handleDragStart = (e, user, source) => {
         e.dataTransfer.setData("user", JSON.stringify(user));
+        e.dataTransfer.setData("source", source);
         e.target.classList.add("dragging");
     };
 
@@ -261,27 +264,49 @@ const BlenderApp = () => {
         e.preventDefault();
     };
 
-    const handleDrop = (e) => {
+    const handleDrop = (e, target) => {
         e.preventDefault();
         const user = JSON.parse(e.dataTransfer.getData("user"));
+        const source = e.dataTransfer.getData("source");
         
-        // Check if user is already in blender
-        if (!usersInBlender.some(u => u.id === user.id)) {
-            const rect = blenderRef.current.getBoundingClientRect();
-            const x = Math.random() * (rect.width - 40);
-            const y = Math.random() * (rect.height - 40);
+        if (target === "blender") {
+            // Handle drop into blender
+            if (source === "holding") {
+                // Remove from holding cell first
+                setUsersInHolding(prev => prev.filter(u => u.id !== user.id));
+            }
             
-            setUsersInBlender(prev => [...prev, {
-                ...user,
-                position: { x, y },
-                velocity: {
-                    x: (Math.random() - 0.5) * 4,
-                    y: (Math.random() - 0.5) * 4
+            // Check if user is already in blender
+            if (!usersInBlender.some(u => u.id === user.id)) {
+                const rect = blenderRef.current.getBoundingClientRect();
+                const x = Math.random() * (rect.width - 40);
+                const y = Math.random() * (rect.height - 40);
+                
+                setUsersInBlender(prev => [...prev, {
+                    ...user,
+                    position: { x, y },
+                    velocity: {
+                        x: (Math.random() - 0.5) * 4,
+                        y: (Math.random() - 0.5) * 4
+                    }
+                }]);
+            }
+        } else if (target === "holding") {
+            // Handle drop into holding cell
+            if (source === "blender") {
+                // Remove from blender first
+                setUsersInBlender(prev => prev.filter(u => u.id !== user.id));
+                
+                // Add to holding if not already there
+                if (!usersInHolding.some(u => u.id === user.id)) {
+                    setUsersInHolding(prev => [...prev, user]);
                 }
-            }]);
+            } else if (!usersInHolding.some(u => u.id === user.id)) {
+                setUsersInHolding(prev => [...prev, user]);
+            }
         }
     };
-    
+
     const animateUsersInBlender = () => {
         setUsersInBlender(prevUsers => {
             if (!blenderRef.current) return prevUsers;
@@ -729,6 +754,37 @@ const BlenderApp = () => {
         }
     };
 
+    const moveToHolding = (user) => {
+        // Remove from blender
+        setUsersInBlender(prev => prev.filter(u => u.id !== user.id));
+        
+        // Add to holding if not already there
+        if (!usersInHolding.some(u => u.id === user.id)) {
+            setUsersInHolding(prev => [...prev, user]);
+        }
+    };
+    
+    const moveToBlender = (user) => {
+        // Remove from holding
+        setUsersInHolding(prev => prev.filter(u => u.id !== user.id));
+        
+        // Add to blender if not already there
+        if (!usersInBlender.some(u => u.id === user.id)) {
+            const rect = blenderRef.current.getBoundingClientRect();
+            const x = Math.random() * (rect.width - 40);
+            const y = Math.random() * (rect.height - 40);
+            
+            setUsersInBlender(prev => [...prev, {
+                ...user,
+                position: { x, y },
+                velocity: {
+                    x: (Math.random() - 0.5) * 4,
+                    y: (Math.random() - 0.5) * 4
+                }
+            }]);
+        }
+    };
+
     return (
         <div className="container">
             <h1 className="title">User Blender</h1>
@@ -762,7 +818,7 @@ const BlenderApp = () => {
                                         key={user.id}
                                         className="user-item"
                                         draggable
-                                        onDragStart={(e) => handleDragStart(e, user)}
+                                        onDragStart={(e) => handleDragStart(e, user, "following")}
                                         onDragEnd={handleDragEnd}
                                         title={`@${user.username}`}
                                     >
@@ -812,28 +868,57 @@ const BlenderApp = () => {
                             </button>
                         </div>
                         
-                        <div 
-                            className="blender-container"
-                            onDragOver={handleDragOver}
-                            onDrop={handleDrop}
-                        >
+                        <div className="blender-area">
                             <div 
-                                className={`blender ${isBlending ? 'shake-animation' : ''} ${isPouring ? 'pour-animation' : ''}`}
-                                ref={blenderRef}
+                                className="holding-cell"
+                                onDragOver={handleDragOver}
+                                onDrop={(e) => handleDrop(e, "holding")}
+                                ref={holdingCellRef}
                             >
-                                {usersInBlender.map((user, index) => (
+                                <div className="holding-cell-title">Holding Cell</div>
+                                {usersInHolding.map((user, index) => (
                                     <div 
-                                        key={`${user.id}-${index}`}
-                                        className="user-in-blender"
+                                        key={`holding-${user.id}-${index}`}
+                                        className="user-in-holding"
                                         style={{
-                                            backgroundImage: `url(${user.avatarUrl})`,
-                                            left: `${user.position.x}px`,
-                                            top: `${user.position.y}px`
+                                            backgroundImage: `url(${user.avatarUrl})`
                                         }}
-                                        onClick={() => removeFromBlender(user.id)}
-                                        title={`Remove ${user.username}`}
+                                        data-username={user.username}
+                                        draggable
+                                        onDragStart={(e) => handleDragStart(e, user, "holding")}
+                                        onDragEnd={handleDragEnd}
+                                        onClick={() => moveToBlender(user)}
+                                        title={`Move ${user.username} to blender`}
                                     />
                                 ))}
+                            </div>
+                            
+                            <div 
+                                className="blender-container"
+                                onDragOver={handleDragOver}
+                                onDrop={(e) => handleDrop(e, "blender")}
+                            >
+                                <div 
+                                    className={`blender ${isBlending ? 'shake-animation' : ''} ${isPouring ? 'pour-animation' : ''}`}
+                                    ref={blenderRef}
+                                >
+                                    {usersInBlender.map((user, index) => (
+                                        <div 
+                                            key={`${user.id}-${index}`}
+                                            className="user-in-blender"
+                                            style={{
+                                                backgroundImage: `url(${user.avatarUrl})`,
+                                                left: `${user.position.x}px`,
+                                                top: `${user.position.y}px`
+                                            }}
+                                            draggable
+                                            onDragStart={(e) => handleDragStart(e, user, "blender")}
+                                            onDragEnd={handleDragEnd}
+                                            onClick={() => moveToHolding(user)}
+                                            title={`Move ${user.username} to holding cell`}
+                                        />
+                                    ))}
+                                </div>
                             </div>
                         </div>
                         
