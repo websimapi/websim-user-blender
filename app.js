@@ -88,17 +88,15 @@ const BlenderApp = () => {
                         cursor: item.cursor
                     }));
                     
-                    // Prefetch avatars for all users
-                    await Promise.allSettled(followingData.map(async (user) => {
+                    // Create fallback avatars immediately for all users
+                    for (const user of followingData) {
                         try {
-                            const blob = await createFallbackAvatar(user.username);
-                            user.avatarBlob = URL.createObjectURL(blob);
-                        } catch (error) {
-                            console.error(`Error prefetching avatar for ${user.username}:`, error);
                             const blob = await createColorAvatar(user.username);
                             user.avatarBlob = URL.createObjectURL(blob);
+                        } catch (error) {
+                            console.error(`Error creating avatar for ${user.username}:`, error);
                         }
-                    }));
+                    }
                     
                     allUsers = [...allUsers, ...followingData];
                     hasNextPage = data.following.meta.has_next_page;
@@ -161,17 +159,15 @@ const BlenderApp = () => {
                     cursor: item.cursor
                 }));
             
-            // Prefetch avatars for all users
-            await Promise.allSettled(followingData.map(async (user) => {
+            // Create fallback avatars immediately for all users
+            for (const user of followingData) {
                 try {
-                    const blob = await createFallbackAvatar(user.username);
-                    user.avatarBlob = URL.createObjectURL(blob);
-                } catch (error) {
-                    console.error(`Error prefetching avatar for ${user.username}:`, error);
                     const blob = await createColorAvatar(user.username);
                     user.avatarBlob = URL.createObjectURL(blob);
+                } catch (error) {
+                    console.error(`Error creating avatar for ${user.username}:`, error);
                 }
-            }));
+            }
             
             setFollowingUsers(followingData);
             setHasMore(data.following.meta.has_next_page);
@@ -405,19 +401,17 @@ const BlenderApp = () => {
 
     const fetchAvatarAsDataUrl = async (user) => {
         try {
-            // If we already have a processed blob URL, use it directly
+            // Always use the local blob if available
             if (user.avatarBlob) {
-                const response = await fetch(user.avatarBlob);
-                const blob = await response.blob();
-                return URL.createObjectURL(blob);
+                return user.avatarBlob;
             }
             
-            // Otherwise generate a new fallback avatar
-            const blob = await createFallbackAvatar(user.username);
+            // Generate a fallback avatar to be safe
+            const blob = await createColorAvatar(user.username);
             return URL.createObjectURL(blob);
         } catch (error) {
             console.error('Error fetching avatar:', error);
-            // Return a fallback image with a colored background
+            // Create a fallback avatar with a colored background
             const blob = await createColorAvatar(user.username);
             return URL.createObjectURL(blob);
         }
@@ -612,7 +606,7 @@ const BlenderApp = () => {
                                         onDragEnd={handleDragEnd}
                                         title={`@${user.username}`}
                                     >
-                                        <img src={user.avatarBlob || user.avatarUrl} alt={user.username} />
+                                        <img src={user.avatarBlob} alt={user.username} />
                                         <span className="user-name">{user.username}</span>
                                     </div>
                                 ))}
@@ -653,7 +647,7 @@ const BlenderApp = () => {
                                         key={`${user.id}-${index}`}
                                         className="user-in-blender"
                                         style={{
-                                            backgroundImage: `url(${user.avatarBlob || user.avatarUrl})`,
+                                            backgroundImage: `url(${user.avatarBlob})`,
                                             left: `${user.position.x}px`,
                                             top: `${user.position.y}px`
                                         }}
@@ -759,9 +753,13 @@ const BlenderApp = () => {
                                                 src={`https://images.websim.ai/avatar/${username}`} 
                                                 alt={username}
                                                 onError={async (e) => {
-                                                    // Generate a simple colored avatar with initial if image fails to load
-                                                    const blob = await createFallbackAvatar(username);
-                                                    e.target.src = URL.createObjectURL(blob);
+                                                    // Generate a colored avatar fallback
+                                                    try {
+                                                        const blob = await createColorAvatar(username);
+                                                        e.target.src = URL.createObjectURL(blob);
+                                                    } catch (err) {
+                                                        console.error("Error creating fallback avatar:", err);
+                                                    }
                                                 }}
                                             />
                                             <span className="modal-user-name">{username}</span>
