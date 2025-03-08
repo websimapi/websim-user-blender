@@ -224,6 +224,14 @@ const BlenderApp = () => {
                 let success = false;
                 let analysis = null;
                 
+                // Show which user we're currently analyzing
+                setBlendedResult({
+                    processing: true,
+                    currentlyAnalyzing: user.username,
+                    analyses: imageAnalyses,
+                    users: usersInBlender.map(u => u.username)
+                });
+                
                 // First get the avatar as data URL to avoid CORS issues
                 const avatarDataUrl = await fetchAvatarAsDataUrl(user.avatarUrl);
                 
@@ -234,6 +242,11 @@ const BlenderApp = () => {
                         description: `A profile picture for user ${user.username}`
                     });
                     continue;
+                }
+                
+                // Wait 2 seconds between each image analysis to avoid rate limiting
+                if (imageAnalyses.length > 0) {
+                    await new Promise(resolve => setTimeout(resolve, 2000));
                 }
                 
                 while (retryCount < 3 && !success) {
@@ -265,15 +278,24 @@ const BlenderApp = () => {
                         retryCount++;
                         // Wait before retrying
                         if (retryCount < 3) {
-                            await new Promise(resolve => setTimeout(resolve, 1000));
+                            await new Promise(resolve => setTimeout(resolve, 2000));
                         }
                     }
                 }
                 
                 if (success && analysis) {
-                    imageAnalyses.push({
+                    const newAnalysis = {
                         username: user.username,
                         description: analysis.content
+                    };
+                    imageAnalyses.push(newAnalysis);
+                    
+                    // Update the UI with the current analysis
+                    setBlendedResult({
+                        processing: true,
+                        currentlyAnalyzing: null,
+                        analyses: [...imageAnalyses],
+                        users: usersInBlender.map(u => u.username)
                     });
                 } else {
                     // Fallback description if all retries failed
@@ -446,7 +468,7 @@ const BlenderApp = () => {
                         </div>
                     </div>
                     
-                    {blendedResult && (
+                    {(blendedResult && !blendedResult.processing) ? (
                         <div className="result-section">
                             <h2>Blended Result</h2>
                             <p>Created from: {blendedResult.users.join(', ')}</p>
@@ -479,7 +501,29 @@ const BlenderApp = () => {
                                 </details>
                             )}
                         </div>
-                    )}
+                    ) : (blendedResult && blendedResult.processing) ? (
+                        <div className="result-section">
+                            <h2>Processing...</h2>
+                            {blendedResult.currentlyAnalyzing && (
+                                <p>Currently analyzing: {blendedResult.currentlyAnalyzing}</p>
+                            )}
+                            <div className="loading-spinner"></div>
+                            
+                            {blendedResult.analyses && blendedResult.analyses.length > 0 && (
+                                <details open>
+                                    <summary>Completed analyses</summary>
+                                    <div className="analyses-list">
+                                        {blendedResult.analyses.map((analysis, index) => (
+                                            <div key={index} className="analysis-item">
+                                                <h4>{analysis.username}</h4>
+                                                <p>{analysis.description}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </details>
+                            )}
+                        </div>
+                    ) : null}
                     
                     {creations.length > 0 && (
                         <div className="community-creations">
