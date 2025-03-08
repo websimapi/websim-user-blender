@@ -8,10 +8,11 @@ const BlenderApp = () => {
     const [blendedResult, setBlendedResult] = useState(null);
     const [creations, setCreations] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [page, setPage] = useState(1);
-    const [searchTerm, setSearchTerm] = useState("");
-    const [hasMore, setHasMore] = useState(false);
     const [loadingMore, setLoadingMore] = useState(false);
+    const [hasMore, setHasMore] = useState(false);
+    const [searchTerm, setSearchTerm] = useState("");
+    const [nextCursor, setNextCursor] = useState(null);
+    const [page, setPage] = useState(1);
     const blenderRef = useRef(null);
     const room = useRef(null);
 
@@ -44,7 +45,7 @@ const BlenderApp = () => {
         }
     }, [room.current]);
 
-    const fetchFollowingUsers = async (pageNum = 1, search = "") => {
+    const fetchFollowingUsers = async (isLoadMore = false, search = "") => {
         try {
             const user = await window.websim.getUser();
             if (!user) {
@@ -52,9 +53,17 @@ const BlenderApp = () => {
                 return;
             }
             
-            setLoadingMore(pageNum > 1);
+            setLoadingMore(isLoadMore);
             const pageSize = 20;
-            const response = await fetch(`/api/v1/users/${user.username}/following?first=${pageSize}${pageNum > 1 ? `&after=${(pageNum-1) * pageSize}` : ''}`);
+            
+            let apiUrl = `/api/v1/users/${user.username}/following?first=${pageSize}`;
+            
+            // Add cursor for pagination if loading more
+            if (isLoadMore && nextCursor) {
+                apiUrl += `&after=${nextCursor}`;
+            }
+            
+            const response = await fetch(apiUrl);
             const data = await response.json();
             
             if (!data.following || !data.following.data) {
@@ -72,12 +81,14 @@ const BlenderApp = () => {
                 }))
                 .filter(user => !search || user.username.toLowerCase().includes(search.toLowerCase()));
             
-            if (pageNum === 1) {
-                setFollowingUsers(followingData);
-            } else {
+            if (isLoadMore) {
                 setFollowingUsers(prev => [...prev, ...followingData]);
+            } else {
+                setFollowingUsers(followingData);
             }
             
+            // Save the end cursor for next page
+            setNextCursor(data.following.meta.end_cursor);
             setHasMore(data.following.meta.has_next_page);
             setIsLoading(false);
             setLoadingMore(false);
@@ -89,16 +100,14 @@ const BlenderApp = () => {
     };
     
     useEffect(() => {
-        fetchFollowingUsers(1, searchTerm);
+        // Reset cursor and fetch with new search term
+        setNextCursor(null);
+        fetchFollowingUsers(false, searchTerm);
     }, [searchTerm]);
     
     const loadMoreUsers = () => {
         if (hasMore && !loadingMore) {
-            setPage(prevPage => {
-                const nextPage = prevPage + 1;
-                fetchFollowingUsers(nextPage, searchTerm);
-                return nextPage;
-            });
+            fetchFollowingUsers(true, searchTerm);
         }
     };
     
@@ -219,10 +228,10 @@ const BlenderApp = () => {
         try {
             // Analyze each user's avatar image
             const imageAnalyses = [];
-            
-            // Process users sequentially instead of in parallel
-            for (let i = 0; i < usersInBlender.length; i++) {
-                const user = usersInBlender[i];
+            for (const user of usersInBlender) {
+                let retryCount = 0;
+                let success = false;
+                let analysis = null;
                 
                 // First get the avatar as data URL to avoid CORS issues
                 const avatarDataUrl = await fetchAvatarAsDataUrl(user.avatarUrl);
@@ -236,53 +245,44 @@ const BlenderApp = () => {
                     continue;
                 }
                 
-                // Add delay before processing each image to prevent rate limiting
-                if (i > 0) {
-                    console.log(`Waiting 15 seconds before analyzing ${user.username}'s avatar...`);
-                    await new Promise(resolve => setTimeout(resolve, 15000));
-                }
-                
-                let description = null;
-                let retryCount = 0;
-                let success = false;
-                
                 while (retryCount < 3 && !success) {
                     try {
-                        // Use a simpler, more reliable approach with basic description
-                        const analysis = await websim.chat.completions.create({
+                        analysis = await websim.chat.completions.create({
                             messages: [
                                 {
                                     role: "system",
-                                    content: "Describe the profile image in a few sentences. Focus on visible elements only."
+                                    content: "You are an AI that analyzes profile images and provides detailed descriptions of their visual content, style, and notable features."
                                 },
                                 {
                                     role: "user",
                                     content: [
-                                        { type: "text", text: "What does this profile picture show?" },
-                                        { type: "image_url", image_url: { url: avatarDataUrl } }
+                                        {
+                                            type: "text",
+                                            text: "Describe this profile image in detail, focusing on color scheme, style, notable features, and visual elements."
+                                        },
+                                        {
+                                            type: "image_url",
+                                            image_url: { url: avatarDataUrl }
+                                        }
                                     ]
                                 }
                             ]
                         });
-                        description = analysis.content;
                         success = true;
-                        console.log(`Successfully analyzed ${user.username}'s avatar`);
                     } catch (error) {
                         console.error(`Error analyzing image for ${user.username} (attempt ${retryCount + 1}):`, error);
                         retryCount++;
-                        // Wait before retrying with increasing backoff
+                        // Wait before retrying
                         if (retryCount < 3) {
-                            const waitTime = 1000 * Math.pow(2, retryCount); // Exponential backoff
-                            console.log(`Waiting ${waitTime/1000} seconds before retry...`);
-                            await new Promise(resolve => setTimeout(resolve, waitTime));
+                            await new Promise(resolve => setTimeout(resolve, 1000));
                         }
                     }
                 }
                 
-                if (success && description) {
+                if (success && analysis) {
                     imageAnalyses.push({
                         username: user.username,
-                        description: description
+                        description: analysis.content
                     });
                 } else {
                     // Fallback description if all retries failed
