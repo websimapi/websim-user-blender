@@ -325,47 +325,49 @@ const BlenderApp = () => {
             const img = document.createElement('img');
             
             return new Promise((resolve, reject) => {
-                img.onload = () => {
-                    try {
-                        const canvas = document.createElement('canvas');
-                        canvas.width = img.width;
-                        canvas.height = img.height;
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0);
-                        resolve(canvas.toDataURL('image/png'));
-                    } catch (err) {
-                        console.error('Error converting image to data URL:', err);
-                        // Provide a fallback simple color avatar
-                        const canvas = document.createElement('canvas');
-                        canvas.width = 200;
-                        canvas.height = 200;
-                        const ctx = canvas.getContext('2d');
-                        // Generate a color based on username for consistency
-                        const hash = avatarUrl.split('/').pop().split('.')[0].split('').reduce((a, b) => {
-                            return a + b.charCodeAt(0);
-                        }, 0);
-                        ctx.fillStyle = `hsl(${hash % 360}, 70%, 60%)`;
-                        ctx.fillRect(0, 0, 200, 200);
-                        // Add text initial
-                        const username = avatarUrl.split('/').pop();
-                        ctx.fillStyle = 'white';
-                        ctx.font = 'bold 100px Arial';
-                        ctx.textAlign = 'center';
-                        ctx.textBaseline = 'middle';
-                        ctx.fillText(username.charAt(0).toUpperCase(), 100, 100);
-                        resolve(canvas.toDataURL('image/png'));
-                    }
+                let retryCount = 0;
+                const maxRetries = 3;
+                
+                const loadImage = () => {
+                    img.onload = () => {
+                        try {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = img.width;
+                            canvas.height = img.height;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0);
+                            resolve(canvas.toDataURL('image/png'));
+                        } catch (err) {
+                            console.error('Error converting image to data URL:', err);
+                            createFallbackAvatar(avatarUrl, resolve);
+                        }
+                    };
+                    
+                    img.onerror = (err) => {
+                        console.error('Error loading avatar:', err);
+                        if (retryCount < maxRetries) {
+                            retryCount++;
+                            console.log(`Retry attempt ${retryCount} for ${avatarUrl}`);
+                            // Add cache-busting parameter to avoid cached error responses
+                            img.src = `${avatarUrl}?retry=${retryCount}&t=${Date.now()}`;
+                        } else {
+                            createFallbackAvatar(avatarUrl, resolve);
+                        }
+                    };
+                    
+                    // Initial load attempt with crossOrigin attribute
+                    img.crossOrigin = 'anonymous';
+                    img.src = avatarUrl;
                 };
                 
-                img.onerror = (err) => {
-                    console.error('Error loading avatar:', err);
+                const createFallbackAvatar = (url, resolver) => {
                     // Generate a fallback avatar with a colored background and initial
                     const canvas = document.createElement('canvas');
                     canvas.width = 200;
                     canvas.height = 200;
                     const ctx = canvas.getContext('2d');
                     // Generate a color based on username for consistency
-                    const username = avatarUrl.split('/').pop();
+                    const username = url.split('/').pop();
                     const hash = username.split('').reduce((a, b) => {
                         return a + b.charCodeAt(0);
                     }, 0);
@@ -377,13 +379,10 @@ const BlenderApp = () => {
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
                     ctx.fillText(username.charAt(0).toUpperCase(), 100, 100);
-                    resolve(canvas.toDataURL('image/png'));
+                    resolver(canvas.toDataURL('image/png'));
                 };
                 
-                // Directly set the src, but avoid CORS issues by using a more reliable approach
-                // Simply create a colored avatar with the user's initial if the image fails to load
-                img.crossOrigin = 'anonymous';
-                img.src = avatarUrl;
+                loadImage();
             });
         } catch (error) {
             console.error('Error fetching avatar:', error);
@@ -403,18 +402,16 @@ const BlenderApp = () => {
         }
     };
 
-    const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
     const handleBlend = async () => {
         if (usersInBlender.length === 0) return;
         
         setIsBlending(true);
         let hasErrors = false;
+        let excludedUsers = [];
         
         try {
-            // Analyze each user's avatar image with spacing between requests
+            // Analyze each user's avatar image
             const imageAnalyses = [];
-            
             for (const user of usersInBlender) {
                 let retryCount = 0;
                 let success = false;
@@ -423,40 +420,43 @@ const BlenderApp = () => {
                 // First get the avatar as data URL to avoid CORS issues
                 const avatarDataUrl = await fetchAvatarAsDataUrl(user.avatarUrl);
                 
-                // Wait 3 seconds between each user analysis to avoid rate limiting
-                if (imageAnalyses.length > 0) {
-                    await delay(3000);
-                }
-                
-                while (retryCount < 3 && !success) {
-                    try {
-                        analysis = await websim.chat.completions.create({
-                            messages: [
-                                {
-                                    role: "system",
-                                    content: "You are an AI that analyzes profile images and provides detailed descriptions of their visual content, style, and notable features."
-                                },
-                                {
-                                    role: "user",
-                                    content: [
-                                        {
-                                            type: "text",
-                                            text: "Describe this profile image in detail, focusing on color scheme, style, notable features, and visual elements."
-                                        },
-                                        {
-                                            type: "image_url",
-                                            image_url: { url: avatarDataUrl }
-                                        }
-                                    ]
-                                }
-                            ]
-                        });
-                        success = true;
-                    } catch (error) {
-                        console.error(`Error analyzing image for ${user.username} (attempt ${retryCount + 1}):`, error);
-                        retryCount++;
-                        // Wait before retrying
-                        await delay(3000);
+                // Only proceed with analysis if we have a valid data URL
+                if (avatarDataUrl) {
+                    // We'll always have a data URL now (either real image or fallback)
+                    
+                    while (retryCount < 3 && !success) {
+                        try {
+                            analysis = await websim.chat.completions.create({
+                                messages: [
+                                    {
+                                        role: "system",
+                                        content: "You are an AI that analyzes profile images and provides detailed descriptions of their visual content, style, and notable features."
+                                    },
+                                    {
+                                        role: "user",
+                                        content: [
+                                            {
+                                                type: "text",
+                                                text: "Describe this profile image in detail, focusing on color scheme, style, notable features, and visual elements."
+                                            },
+                                            {
+                                                type: "image_url",
+                                                image_url: { url: avatarDataUrl }
+                                            }
+                                        ]
+                                    }
+                                ]
+                            });
+                            success = true;
+                        } catch (error) {
+                            console.error(`Error analyzing image for ${user.username} (attempt ${retryCount + 1}):`, error);
+                            retryCount++;
+                            hasErrors = true;
+                            // Wait before retrying
+                            if (retryCount < 3) {
+                                await new Promise(resolve => setTimeout(resolve, 1000));
+                            }
+                        }
                     }
                 }
                 
@@ -466,22 +466,20 @@ const BlenderApp = () => {
                         description: analysis.content
                     });
                 } else {
-                    // Fallback description if all retries failed
-                    imageAnalyses.push({
-                        username: user.username,
-                        description: `A profile picture for user ${user.username}`
-                    });
+                    // Track excluded users due to failure
+                    excludedUsers.push(user.username);
                 }
             }
             
-            // Don't proceed with blending if we had too many errors
-            const failedAnalyses = imageAnalyses.filter(a => a.description.startsWith('A profile picture for user')).length;
-            if (failedAnalyses > usersInBlender.length / 2) {
-                throw new Error("Failed to analyze most avatar images. Please try again with fewer users.");
+            // Check if we have any successful analyses to proceed
+            if (imageAnalyses.length === 0) {
+                throw new Error("Failed to analyze any avatar images. Please try again with fewer users.");
             }
             
-            // Wait a bit before the next API call
-            await delay(2000);
+            // Show warning for excluded users
+            if (excludedUsers.length > 0) {
+                console.warn(`The following users were excluded due to image processing errors: ${excludedUsers.join(', ')}`);
+            }
             
             // Combine analyses into a detailed prompt for the blended image
             const analysisText = imageAnalyses.map(a => `${a.username}: ${a.description}`).join('\n\n');
@@ -504,12 +502,9 @@ const BlenderApp = () => {
                 console.error("Error creating blending guidance:", error);
                 // Fallback if the guidance creation fails
                 blendingGuidance = {
-                    content: `Create a beautiful avatar that combines elements from these users: ${usersInBlender.map(u => u.username).join(', ')}. ${analysisText.substring(0, 500)}...`
+                    content: `Create a beautiful avatar that combines elements from these users: ${imageAnalyses.map(a => a.username).join(', ')}. ${analysisText.substring(0, 500)}...`
                 };
             }
-            
-            // Wait a bit before the final image generation
-            await delay(2000);
             
             // Generate the blended image using the refined prompt
             const imageResult = await websim.imageGen({
@@ -522,8 +517,11 @@ const BlenderApp = () => {
                 imageUrl: imageResult.url,
                 description: blendingGuidance.content,
                 analyses: imageAnalyses,
-                users: usersInBlender.map(u => u.username),
-                userIds: usersInBlender.map(u => u.id),
+                users: imageAnalyses.map(a => a.username),
+                userIds: usersInBlender
+                    .filter(u => !excludedUsers.includes(u.username))
+                    .map(u => u.id),
+                excludedUsers: excludedUsers,
                 timestamp: new Date().toISOString()
             });
             
@@ -532,8 +530,11 @@ const BlenderApp = () => {
                 imageUrl: imageResult.url,
                 description: blendingGuidance.content,
                 analyses: imageAnalyses.map(a => ({ username: a.username, description: a.description })),
-                users: usersInBlender.map(u => u.username),
-                userIds: usersInBlender.map(u => u.id),
+                users: imageAnalyses.map(a => a.username),
+                userIds: usersInBlender
+                    .filter(u => !excludedUsers.includes(u.username))
+                    .map(u => u.id),
+                excludedUsers: excludedUsers,
                 username: room.current.party.client.username
             });
             
@@ -551,7 +552,7 @@ const BlenderApp = () => {
             setIsBlending(false);
             
             // Show a user-friendly error message
-            alert("There was an error creating your blend. Please try again with fewer users.");
+            alert(error.message || "There was an error creating your blend. Please try again with fewer users.");
         }
     };
     
@@ -667,6 +668,11 @@ const BlenderApp = () => {
                         <div className="result-section">
                             <h2>Blended Result</h2>
                             <p>Created from: {blendedResult.users.join(', ')}</p>
+                            {blendedResult.excludedUsers && blendedResult.excludedUsers.length > 0 && (
+                                <p className="excluded-users">
+                                    Users excluded due to errors: {blendedResult.excludedUsers.join(', ')}
+                                </p>
+                            )}
                             <div className="pouring-animation">
                                 {isPouring ? (
                                     <div className="loading-spinner"></div>
@@ -730,6 +736,11 @@ const BlenderApp = () => {
                                     className="modal-image"
                                 />
                                 <p>Created by: <strong>{selectedCreation.username}</strong></p>
+                                {selectedCreation.excludedUsers && selectedCreation.excludedUsers.length > 0 && (
+                                    <p className="excluded-users">
+                                        Users excluded due to errors: {selectedCreation.excludedUsers.join(', ')}
+                                    </p>
+                                )}
                                 <div className="modal-users">
                                     {selectedCreation.users.map((username, index) => (
                                         <div key={index} className="modal-user">
