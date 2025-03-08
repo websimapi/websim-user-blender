@@ -205,6 +205,9 @@ const BlenderApp = () => {
                 
                 while (attempts < maxAttempts) {
                     try {
+                        // Convert image URL to data URL to avoid CORS issues
+                        const imageDataUrl = await fetchImageAsDataUrl(user.avatarUrl);
+                        
                         const result = await websim.chat.completions.create({
                             messages: [
                                 {
@@ -220,7 +223,7 @@ const BlenderApp = () => {
                                         },
                                         {
                                             type: "image_url",
-                                            image_url: { url: user.avatarUrl }
+                                            image_url: { url: imageDataUrl }
                                         }
                                     ]
                                 }
@@ -338,6 +341,27 @@ const BlenderApp = () => {
     
     const removeFromBlender = (userId) => {
         setUsersInBlender(prev => prev.filter(user => user.id !== userId));
+    };
+
+    const fetchImageAsDataUrl = async (imageUrl) => {
+        try {
+            // Create a proxy URL to avoid CORS issues
+            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(imageUrl)}`;
+            
+            const response = await fetch(proxyUrl);
+            const blob = await response.blob();
+            
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        } catch (error) {
+            console.error("Error fetching image:", error);
+            // Return a fallback image if fetching fails
+            return "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIiB2aWV3Qm94PSIwIDAgMjAwIDIwMCI+PHJlY3Qgd2lkdGg9IjIwMCIgaGVpZ2h0PSIyMDAiIGZpbGw9IiM5ZGQxZmYiLz48dGV4dCB4PSIxMDAiIHk9IjEwMCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjIwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiBmaWxsPSIjMDAwIj5QcmVsb2FkIEZhaWxlZDwvdGV4dD48L3N2Zz4=";
+        }
     };
 
     return (
