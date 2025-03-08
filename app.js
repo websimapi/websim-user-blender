@@ -219,10 +219,10 @@ const BlenderApp = () => {
         try {
             // Analyze each user's avatar image
             const imageAnalyses = [];
-            for (const user of usersInBlender) {
-                let retryCount = 0;
-                let success = false;
-                let analysis = null;
+            
+            // Process users sequentially instead of in parallel
+            for (let i = 0; i < usersInBlender.length; i++) {
+                const user = usersInBlender[i];
                 
                 // First get the avatar as data URL to avoid CORS issues
                 const avatarDataUrl = await fetchAvatarAsDataUrl(user.avatarUrl);
@@ -237,34 +237,34 @@ const BlenderApp = () => {
                 }
                 
                 // Add delay before processing each image to prevent rate limiting
-                if (imageAnalyses.length > 0) {
+                if (i > 0) {
                     console.log(`Waiting 15 seconds before analyzing ${user.username}'s avatar...`);
                     await new Promise(resolve => setTimeout(resolve, 15000));
                 }
                 
+                let description = null;
+                let retryCount = 0;
+                let success = false;
+                
                 while (retryCount < 3 && !success) {
                     try {
-                        analysis = await websim.chat.completions.create({
+                        // Use a simpler, more reliable approach with basic description
+                        const analysis = await websim.chat.completions.create({
                             messages: [
                                 {
                                     role: "system",
-                                    content: "You are an AI that analyzes profile images and provides detailed descriptions of their visual content, style, and notable features."
+                                    content: "Describe the profile image in a few sentences. Focus on visible elements only."
                                 },
                                 {
                                     role: "user",
                                     content: [
-                                        {
-                                            type: "text",
-                                            text: "Describe this profile image in detail, focusing on color scheme, style, notable features, and visual elements."
-                                        },
-                                        {
-                                            type: "image_url",
-                                            image_url: { url: avatarDataUrl }
-                                        }
+                                        { type: "text", text: "What does this profile picture show?" },
+                                        { type: "image_url", image_url: { url: avatarDataUrl } }
                                     ]
                                 }
                             ]
                         });
+                        description = analysis.content;
                         success = true;
                         console.log(`Successfully analyzed ${user.username}'s avatar`);
                     } catch (error) {
@@ -279,10 +279,10 @@ const BlenderApp = () => {
                     }
                 }
                 
-                if (success && analysis) {
+                if (success && description) {
                     imageAnalyses.push({
                         username: user.username,
-                        description: analysis.content
+                        description: description
                     });
                 } else {
                     // Fallback description if all retries failed
