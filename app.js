@@ -54,8 +54,15 @@ const BlenderApp = () => {
             
             setLoadingMore(pageNum > 1);
             const pageSize = 20;
-            const response = await fetch(`/api/v1/users/${user.username}/following?first=${pageSize}&after=${(pageNum-1) * pageSize > 0 ? (pageNum-1) * pageSize : ''}`);
+            const response = await fetch(`/api/v1/users/${user.username}/following?first=${pageSize}${pageNum > 1 ? `&after=${(pageNum-1) * pageSize}` : ''}`);
             const data = await response.json();
+            
+            if (!data.following || !data.following.data) {
+                console.error("Unexpected API response format:", data);
+                setIsLoading(false);
+                setLoadingMore(false);
+                return;
+            }
             
             const followingData = data.following.data
                 .map(item => ({
