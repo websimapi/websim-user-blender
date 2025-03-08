@@ -192,6 +192,25 @@ const BlenderApp = () => {
         });
     };
 
+    const fetchAvatarAsDataUrl = async (avatarUrl) => {
+        try {
+            // Create a canvas to convert the image
+            const response = await fetch(avatarUrl);
+            const blob = await response.blob();
+            
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        } catch (error) {
+            console.error('Error fetching avatar:', error);
+            // Return a fallback image or null
+            return null;
+        }
+    };
+
     const handleBlend = async () => {
         if (usersInBlender.length === 0) return;
         
@@ -204,6 +223,18 @@ const BlenderApp = () => {
                 let retryCount = 0;
                 let success = false;
                 let analysis = null;
+                
+                // First get the avatar as data URL to avoid CORS issues
+                const avatarDataUrl = await fetchAvatarAsDataUrl(user.avatarUrl);
+                
+                if (!avatarDataUrl) {
+                    // If we couldn't get the avatar, use a fallback description
+                    imageAnalyses.push({
+                        username: user.username,
+                        description: `A profile picture for user ${user.username}`
+                    });
+                    continue;
+                }
                 
                 while (retryCount < 3 && !success) {
                     try {
@@ -222,7 +253,7 @@ const BlenderApp = () => {
                                         },
                                         {
                                             type: "image_url",
-                                            image_url: { url: user.avatarUrl }
+                                            image_url: { url: avatarDataUrl }
                                         }
                                     ]
                                 }
