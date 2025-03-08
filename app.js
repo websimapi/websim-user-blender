@@ -54,8 +54,20 @@ const BlenderApp = () => {
             }
             
             setLoadingMore(pageNum > 1);
-            const pageSize = 20;
-            const response = await fetch(`/api/v1/users/${user.username}/following?first=${pageSize}${pageNum > 1 ? `&after=${(pageNum-1) * pageSize}` : ''}`);
+            
+            // Fix pagination by using cursors properly
+            let url = `/api/v1/user/following?first=20`;
+            
+            // If there's a cursor stored for pagination, use it
+            if (pageNum > 1 && followingUsers.length > 0) {
+                const lastIndex = followingUsers.length - 1;
+                const lastCursor = followingUsers[lastIndex]?.cursor;
+                if (lastCursor) {
+                    url += `&after=${lastCursor}`;
+                }
+            }
+            
+            const response = await fetch(url);
             const data = await response.json();
             
             if (!data.following || !data.following.data) {
@@ -69,7 +81,8 @@ const BlenderApp = () => {
                 .map(item => ({
                     id: item.follow.user.id,
                     username: item.follow.user.username,
-                    avatarUrl: `https://images.websim.ai/avatar/${item.follow.user.username}`
+                    avatarUrl: `https://images.websim.ai/avatar/${item.follow.user.username}`,
+                    cursor: item.cursor
                 }))
                 .filter(user => !search || user.username.toLowerCase().includes(search.toLowerCase()));
             
