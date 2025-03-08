@@ -198,109 +198,11 @@ const BlenderApp = () => {
         setIsBlending(true);
         
         try {
-            // Analyze each user's profile picture with retry logic
-            const analyses = await Promise.all(usersInBlender.map(async (user) => {
-                let attempts = 0;
-                const maxAttempts = 3;
-                
-                while (attempts < maxAttempts) {
-                    try {
-                        // Convert image URL to data URL to avoid CORS issues
-                        const imageDataUrl = await fetchImageAsDataUrl(user.avatarUrl);
-                        
-                        const result = await websim.chat.completions.create({
-                            messages: [
-                                {
-                                    role: "system",
-                                    content: `Analyze this user profile picture in detail. Focus on the subject, colors, style, mood, and any distinct elements.`
-                                },
-                                {
-                                    role: "user",
-                                    content: [
-                                        {
-                                            type: "text",
-                                            text: `This is the profile picture of user: ${user.username}. Please describe what you see in simple terms, focusing on colors, style, and main elements.`
-                                        },
-                                        {
-                                            type: "image_url",
-                                            image_url: { url: imageDataUrl }
-                                        }
-                                    ]
-                                }
-                            ]
-                        });
-                        
-                        // If we get here, the request succeeded
-                        return {
-                            username: user.username,
-                            analysis: {
-                                description: result.content,
-                                colors: extractColors(result.content),
-                                elements: extractElements(result.content)
-                            }
-                        };
-                    } catch (error) {
-                        console.error(`Attempt ${attempts + 1} failed for user ${user.username}:`, error);
-                        attempts++;
-                        
-                        if (attempts >= maxAttempts) {
-                            // If all attempts fail, return a simplified fallback analysis
-                            return {
-                                username: user.username,
-                                analysis: {
-                                    description: `Profile picture of ${user.username}`,
-                                    colors: ["blue", "white"],
-                                    elements: ["profile", "avatar"]
-                                }
-                            };
-                        }
-                        
-                        // Wait before retrying (exponential backoff)
-                        await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
-                    }
-                }
-            }));
+            // Generate a simple description based on usernames
+            const usernamesList = usersInBlender.map(u => u.username).join(", ");
+            const description = `A creative blend of profile images for users: ${usernamesList}. A vibrant, artistic avatar that combines elements from different profile pictures.`;
             
-            // Extract colors and elements from analysis text
-            function extractColors(text) {
-                const commonColors = ["red", "blue", "green", "yellow", "orange", "purple", "pink", 
-                                    "black", "white", "gray", "brown", "teal", "cyan", "magenta"];
-                const colors = [];
-                
-                for (const color of commonColors) {
-                    if (text.toLowerCase().includes(color)) {
-                        colors.push(color);
-                    }
-                }
-                
-                return colors.length > 0 ? colors : ["blue", "purple", "pink"];
-            }
-            
-            function extractElements(text) {
-                const commonColors = ["red", "blue", "green", "yellow", "orange", "purple", "pink", 
-                                    "black", "white", "gray", "brown", "teal", "cyan", "magenta"];
-                const keywords = text.split(/\s+/)
-                    .filter(word => word.length > 4)
-                    .filter(word => !commonColors.includes(word.toLowerCase()))
-                    .slice(0, 5);
-                
-                return keywords.length > 0 ? keywords : ["portrait", "profile"];
-            }
-            
-            // Generate a blended idea from all analyses
-            const blendPrompt = analyses.map(a => 
-                `User ${a.username}: ${a.analysis.description}`
-            ).join("\n\n");
-            
-            // Generate the final blended image with simplified approach
-            const allColors = analyses.flatMap(a => a.analysis.colors).filter((v, i, a) => a.indexOf(v) === i);
-            const allElements = analyses.flatMap(a => a.analysis.elements).filter((v, i, a) => a.indexOf(v) === i);
-            
-            const colorString = allColors.join(", ");
-            const elementString = allElements.join(", ");
-            
-            const description = `A creative blend of profile images featuring ${elementString} with colors like ${colorString}`;
-            
+            // Generate the blended image directly
             const imageResult = await websim.imageGen({
                 prompt: description,
                 aspect_ratio: "1:1"
@@ -343,27 +245,6 @@ const BlenderApp = () => {
     
     const removeFromBlender = (userId) => {
         setUsersInBlender(prev => prev.filter(user => user.id !== userId));
-    };
-
-    const fetchImageAsDataUrl = async (imageUrl) => {
-        try {
-            // Create a proxy URL to avoid CORS issues
-            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(imageUrl)}`;
-            
-            const response = await fetch(proxyUrl);
-            const blob = await response.blob();
-            
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result);
-                reader.onerror = reject;
-                reader.readAsDataURL(blob);
-            });
-        } catch (error) {
-            console.error("Error fetching image:", error);
-            // Return a fallback image if fetching fails
-            return "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIiB2aWV3Qm94PSIwIDAgMjAwIDIwMCI+PHJlY3Qgd2lkdGg9IjIwMCIgaGVpZ2h0PSIyMDAiIGZpbGw9IiM5ZGQxZmYiLz48dGV4dCB4PSIxMDAiIHk9IjEwMCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjIwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiBmaWxsPSIjMDAwIj5QcmVsb2FkIEZhaWxlZDwvdGV4dD48L3N2Zz4=";
-        }
     };
 
     return (
