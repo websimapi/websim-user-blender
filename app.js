@@ -331,11 +331,16 @@ const BlenderApp = () => {
                 const loadImage = () => {
                     img.onload = () => {
                         try {
+                            // Create a standard-sized canvas and convert to PNG
                             const canvas = document.createElement('canvas');
-                            canvas.width = img.width;
-                            canvas.height = img.height;
+                            const size = 200; // Standard size for all avatars
+                            canvas.width = size;
+                            canvas.height = size;
                             const ctx = canvas.getContext('2d');
-                            ctx.drawImage(img, 0, 0);
+                            // Draw with proper scaling to fit the canvas
+                            ctx.fillStyle = '#ffffff';
+                            ctx.fillRect(0, 0, size, size);
+                            ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, size, size);
                             resolve(canvas.toDataURL('image/png'));
                         } catch (err) {
                             console.error('Error converting image to data URL:', err);
@@ -348,24 +353,24 @@ const BlenderApp = () => {
                         if (retryCount < maxRetries) {
                             retryCount++;
                             console.log(`Retry attempt ${retryCount} for ${avatarUrl}`);
-                            // Try with CORS proxy on retry
-                            const corsProxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(avatarUrl)}`;
-                            img.src = corsProxyUrl;
+                            // Add cache-busting parameter to avoid cached error responses
+                            img.src = `${avatarUrl}?retry=${retryCount}&t=${Date.now()}`;
                         } else {
                             createFallbackAvatar(avatarUrl, resolve);
                         }
                     };
                     
-                    // Initial load attempt with crossOrigin attribute
-                    img.crossOrigin = 'anonymous';
+                    // Initial load attempt with no crossOrigin attribute to avoid CORS issues
+                    // Remove crossOrigin which can trigger CORS errors
                     img.src = avatarUrl;
                 };
                 
                 const createFallbackAvatar = (url, resolver) => {
                     // Generate a fallback avatar with a colored background and initial
                     const canvas = document.createElement('canvas');
-                    canvas.width = 200;
-                    canvas.height = 200;
+                    const size = 200;
+                    canvas.width = size;
+                    canvas.height = size;
                     const ctx = canvas.getContext('2d');
                     // Generate a color based on username for consistency
                     const username = url.split('/').pop();
@@ -373,13 +378,13 @@ const BlenderApp = () => {
                         return a + b.charCodeAt(0);
                     }, 0);
                     ctx.fillStyle = `hsl(${hash % 360}, 70%, 60%)`;
-                    ctx.fillRect(0, 0, 200, 200);
+                    ctx.fillRect(0, 0, size, size);
                     // Add text initial
                     ctx.fillStyle = 'white';
                     ctx.font = 'bold 100px Arial';
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
-                    ctx.fillText(username.charAt(0).toUpperCase(), 100, 100);
+                    ctx.fillText(username.charAt(0).toUpperCase(), size/2, size/2);
                     resolver(canvas.toDataURL('image/png'));
                 };
                 
@@ -389,16 +394,17 @@ const BlenderApp = () => {
             console.error('Error fetching avatar:', error);
             // Return a fallback image with a colored background
             const canvas = document.createElement('canvas');
-            canvas.width = 200;
-            canvas.height = 200;
+            const size = 200;
+            canvas.width = size;
+            canvas.height = size;
             const ctx = canvas.getContext('2d');
             ctx.fillStyle = '#3498db'; // Default blue
-            ctx.fillRect(0, 0, 200, 200);
+            ctx.fillRect(0, 0, size, size);
             ctx.fillStyle = 'white';
             ctx.font = 'bold 100px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText('?', 100, 100);
+            ctx.fillText('?', size/2, size/2);
             return canvas.toDataURL('image/png');
         }
     };
