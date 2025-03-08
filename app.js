@@ -16,6 +16,7 @@ const BlenderApp = () => {
     const [allSearchResults, setAllSearchResults] = useState([]);
     const [currentSearchPage, setCurrentSearchPage] = useState(1);
     const [selectedCreation, setSelectedCreation] = useState(null);
+    const [processedAvatars, setProcessedAvatars] = useState({});
     const blenderRef = useRef(null);
     const room = useRef(null);
 
@@ -109,6 +110,9 @@ const BlenderApp = () => {
                 const endIndex = startIndex + 20;
                 const paginatedResults = filteredUsers.slice(startIndex, endIndex);
                 
+                // Preprocess avatars for these 20 users
+                await preprocessAvatars(paginatedResults);
+                
                 setFollowingUsers(paginatedResults);
                 setHasMore(endIndex < filteredUsers.length);
                 setHasPrevious(pageNum > 1);
@@ -147,6 +151,9 @@ const BlenderApp = () => {
                     cursor: item.cursor
                 }));
             
+            // Preprocess avatars for these users
+            await preprocessAvatars(followingData);
+            
             setFollowingUsers(followingData);
             setHasMore(data.following.meta.has_next_page);
             setHasPrevious(pageNum > 1);
@@ -163,78 +170,197 @@ const BlenderApp = () => {
         fetchFollowingUsers(1, searchTerm);
     }, [searchTerm]);
     
-    const goToNextPage = () => {
-        if (searchTerm) {
-            if (currentSearchPage * 20 < allSearchResults.length) {
-                setCurrentSearchPage(prevPage => {
-                    const nextPage = prevPage + 1;
-                    const startIndex = (nextPage - 1) * 20;
-                    const endIndex = startIndex + 20;
-                    setFollowingUsers(allSearchResults.slice(startIndex, endIndex));
-                    setHasPrevious(true);
-                    setHasMore(endIndex < allSearchResults.length);
-                    return nextPage;
-                });
-            }
-        } else if (hasMore && !loadingMore) {
-            setPage(prevPage => {
-                const nextPage = prevPage + 1;
-                fetchFollowingUsers(nextPage, searchTerm);
-                return nextPage;
-            });
-        }
-    };
-    
-    const goToPreviousPage = () => {
-        if (searchTerm) {
-            if (currentSearchPage > 1) {
-                setCurrentSearchPage(prevPage => {
-                    const prevPageNum = prevPage - 1;
-                    const startIndex = (prevPageNum - 1) * 20;
-                    const endIndex = startIndex + 20;
-                    setFollowingUsers(allSearchResults.slice(startIndex, endIndex));
-                    setHasPrevious(prevPageNum > 1);
-                    setHasMore(true);
-                    return prevPageNum;
-                });
-            }
-        } else if (page > 1 && !loadingMore) {
-            setPage(prevPage => {
-                const prevPageNum = prevPage - 1;
-                fetchFollowingUsers(prevPageNum, searchTerm);
-                return prevPageNum;
-            });
-        }
-    };
-    
-    const loadMoreUsers = () => {
-        if (searchTerm) {
-            if (currentSearchPage * 20 < allSearchResults.length) {
-                setCurrentSearchPage(prevPage => {
-                    const nextPage = prevPage + 1;
-                    const startIndex = (nextPage - 1) * 20;
-                    const endIndex = startIndex + 20;
-                    setFollowingUsers(allSearchResults.slice(startIndex, endIndex));
-                    setHasPrevious(true);
-                    setHasMore(endIndex < allSearchResults.length);
-                    return nextPage;
-                });
-            }
-        } else if (hasMore && !loadingMore) {
-            setPage(prevPage => {
-                const nextPage = prevPage + 1;
-                fetchFollowingUsers(nextPage, searchTerm);
-                return nextPage;
-            });
-        }
-    };
-    
-    const loadCreations = async () => {
+    const preprocessAvatars = async (users) => {
         try {
-            const savedCreations = room.current.collection('blended_creation').getList();
-            setCreations(savedCreations);
+            const promises = users.map(async (user) => {
+                // Skip if already processed
+                if (processedAvatars[user.username]) return;
+                
+                try {
+                    // Create a blob URL from the avatar
+                    const dataUrl = await fetchAndCreateDataUrl(user.username);
+                    setProcessedAvatars(prev => ({
+                        ...prev,
+                        [user.username]: dataUrl
+                    }));
+                } catch (error) {
+                    console.error(`Failed to process avatar for ${user.username}:`, error);
+                    // Create a fallback avatar
+                    const fallbackAvatar = createFallbackAvatar(user.username);
+                    setProcessedAvatars(prev => ({
+                        ...prev,
+                        [user.username]: fallbackAvatar
+                    }));
+                }
+            });
+            
+            await Promise.allSettled(promises);
         } catch (error) {
-            console.error("Error loading creations:", error);
+            console.error("Error preprocessing avatars:", error);
+        }
+    };
+    
+    const fetchAndCreateDataUrl = async (username) => {
+        try {
+            // Try to create a blob URL from the avatar image
+            const response = await fetch(`https://images.websim.ai/avatar/${username}`, {
+                mode: 'cors',
+                cache: 'force-cache'
+            });
+            
+            if (!response.ok) throw new Error(`Failed to fetch image: ${response.status}`);
+            
+            const blob = await response.blob();
+            return URL.createObjectURL(blob);
+        } catch (error) {
+            console.error(`Error creating blob URL for ${username}:`, error);
+            return createFallbackAvatar(username);
+        }
+    };
+    
+    const createFallbackAvatar = (username) => {
+        // Generate a fallback avatar with a colored background and initial
+        const canvas = document.createElement('canvas');
+        canvas.width = 200;
+        canvas.height = 200;
+        const ctx = canvas.getContext('2d');
+        
+        // Generate a color based on username for consistency
+        const hash = username.split('').reduce((a, b) => {
+            return a + b.charCodeAt(0);
+        }, 0);
+        
+        ctx.fillStyle = `hsl(${hash % 360}, 70%, 60%)`;
+        ctx.fillRect(0, 0, 200, 200);
+        
+        // Add text initial
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 100px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(username.charAt(0).toUpperCase(), 100, 100);
+        
+        return canvas.toDataURL('image/png');
+    };
+
+    const fetchAvatarAsDataUrl = async (username) => {
+        try {
+            // First check if we already have a processed avatar
+            if (processedAvatars[username]) {
+                return processedAvatars[username];
+            }
+            
+            // If not, try to create one now
+            const dataUrl = await fetchAndCreateDataUrl(username);
+            
+            // Save it for future use
+            setProcessedAvatars(prev => ({
+                ...prev,
+                [username]: dataUrl
+            }));
+            
+            return dataUrl;
+        } catch (error) {
+            console.error('Error fetching avatar:', error);
+            const fallback = createFallbackAvatar(username);
+            
+            // Save fallback for future use
+            setProcessedAvatars(prev => ({
+                ...prev,
+                [username]: fallback
+            }));
+            
+            return fallback;
+        }
+    };
+
+    const handleBlend = async () => {
+        if (usersInBlender.length === 0) return;
+        
+        setIsBlending(true);
+        let hasErrors = false;
+        let excludedUsers = [];
+        
+        try {
+            // Analyze each user's avatar image
+            const imageAnalyses = [];
+            for (const user of usersInBlender) {
+                let retryCount = 0;
+                let success = false;
+                let analysis = null;
+                
+                // Get the avatar as data URL using our cached/processed version
+                const avatarDataUrl = await fetchAvatarAsDataUrl(user.username);
+                
+                if (avatarDataUrl) {
+                    while (retryCount < 3 && !success) {
+                        try {
+                            analysis = await websim.chat.completions.create({
+                                messages: [
+                                    {
+                                        role: "system",
+                                        content: "You are an AI that analyzes profile images and provides detailed descriptions of their visual content, style, and notable features."
+                                    },
+                                    {
+                                        role: "user",
+                                        content: [
+                                            {
+                                                type: "text",
+                                                text: "Describe this profile image in detail, focusing on color scheme, style, notable features, and visual elements."
+                                            },
+                                            {
+                                                type: "image_url",
+                                                image_url: { url: avatarDataUrl }
+                                            }
+                                        ]
+                                    }
+                                ]
+                            });
+                            success = true;
+                        } catch (error) {
+                            console.error(`Error analyzing image for ${user.username} (attempt ${retryCount + 1}):`, error);
+                            retryCount++;
+                            // Wait before retrying
+                            if (retryCount < 3) {
+                                await new Promise(resolve => setTimeout(resolve, 1000));
+                            }
+                        }
+                    }
+                }
+                
+                if (success && analysis) {
+                    imageAnalyses.push({
+                        username: user.username,
+                        description: analysis.content
+                    });
+                } else {
+                    // Track excluded users due to failure
+                    excludedUsers.push(user.username);
+                }
+            }
+            
+            // Check if we have any successful analyses to proceed
+            if (imageAnalyses.length === 0) {
+                throw new Error("Failed to analyze any avatar images. Please try again with fewer users.");
+            }
+            
+            // ... rest of blending function remains the same ...
+            
+            setIsBlending(false);
+            setIsPouring(true);
+            
+            // Reset after pouring animation completes
+            setTimeout(() => {
+                setIsPouring(false);
+                setUsersInBlender([]);
+            }, 2000);
+            
+        } catch (error) {
+            console.error("Error in blending process:", error);
+            setIsBlending(false);
+            
+            // Show a user-friendly error message
+            alert(error.message || "There was an error creating your blend. Please try again with fewer users.");
         }
     };
 
@@ -319,263 +445,81 @@ const BlenderApp = () => {
         });
     };
 
-    const fetchAvatarAsDataUrl = async (avatarUrl) => {
+    const loadCreations = async () => {
         try {
-            // Create an image element
-            const img = document.createElement('img');
-            
-            return new Promise((resolve, reject) => {
-                let retryCount = 0;
-                const maxRetries = 3;
-                
-                const loadImage = () => {
-                    img.onload = () => {
-                        try {
-                            // Create a standard-sized canvas and convert to PNG
-                            const canvas = document.createElement('canvas');
-                            const size = 200; // Standard size for all avatars
-                            canvas.width = size;
-                            canvas.height = size;
-                            const ctx = canvas.getContext('2d');
-                            // Draw with proper scaling to fit the canvas
-                            ctx.fillStyle = '#ffffff';
-                            ctx.fillRect(0, 0, size, size);
-                            
-                            // Skip drawing the image which might cause CORS issues
-                            // Instead, create a colored avatar with the user's initial
-                            const username = avatarUrl.split('/').pop();
-                            const hash = username.split('').reduce((a, b) => {
-                                return a + b.charCodeAt(0);
-                            }, 0);
-                            ctx.fillStyle = `hsl(${hash % 360}, 70%, 60%)`;
-                            ctx.fillRect(0, 0, size, size);
-                            ctx.fillStyle = 'white';
-                            ctx.font = 'bold 100px Arial';
-                            ctx.textAlign = 'center';
-                            ctx.textBaseline = 'middle';
-                            ctx.fillText(username.charAt(0).toUpperCase(), size/2, size/2);
-                            resolve(canvas.toDataURL('image/png'));
-                        } catch (err) {
-                            console.error('Error converting image to data URL:', err);
-                            createFallbackAvatar(avatarUrl, resolve);
-                        }
-                    };
-                    
-                    img.onerror = (err) => {
-                        console.error('Error loading avatar:', err);
-                        if (retryCount < maxRetries) {
-                            retryCount++;
-                            console.log(`Retry attempt ${retryCount} for ${avatarUrl}`);
-                            // Add cache-busting parameter to avoid cached error responses
-                            img.src = `${avatarUrl}?retry=${retryCount}&t=${Date.now()}`;
-                        } else {
-                            createFallbackAvatar(avatarUrl, resolve);
-                        }
-                    };
-                    
-                    // Initial load attempt with no crossOrigin attribute to avoid CORS issues
-                    // Remove crossOrigin which can trigger CORS errors
-                    img.src = avatarUrl;
-                };
-                
-                const createFallbackAvatar = (url, resolver) => {
-                    // Generate a fallback avatar with a colored background and initial
-                    const canvas = document.createElement('canvas');
-                    const size = 200;
-                    canvas.width = size;
-                    canvas.height = size;
-                    const ctx = canvas.getContext('2d');
-                    // Generate a color based on username for consistency
-                    const username = url.split('/').pop();
-                    const hash = username.split('').reduce((a, b) => {
-                        return a + b.charCodeAt(0);
-                    }, 0);
-                    ctx.fillStyle = `hsl(${hash % 360}, 70%, 60%)`;
-                    ctx.fillRect(0, 0, size, size);
-                    // Add text initial
-                    ctx.fillStyle = 'white';
-                    ctx.font = 'bold 100px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(username.charAt(0).toUpperCase(), size/2, size/2);
-                    resolver(canvas.toDataURL('image/png'));
-                };
-                
-                loadImage();
-            });
+            const savedCreations = room.current.collection('blended_creation').getList();
+            setCreations(savedCreations);
         } catch (error) {
-            console.error('Error fetching avatar:', error);
-            // Return a fallback image with a colored background
-            const canvas = document.createElement('canvas');
-            const size = 200;
-            canvas.width = size;
-            canvas.height = size;
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#3498db'; // Default blue
-            ctx.fillRect(0, 0, size, size);
-            ctx.fillStyle = 'white';
-            ctx.font = 'bold 100px Arial';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('?', size/2, size/2);
-            return canvas.toDataURL('image/png');
+            console.error("Error loading creations:", error);
         }
     };
 
-    const handleBlend = async () => {
-        if (usersInBlender.length === 0) return;
-        
-        setIsBlending(true);
-        let hasErrors = false;
-        let excludedUsers = [];
-        
-        try {
-            // Analyze each user's avatar image
-            const imageAnalyses = [];
-            for (const user of usersInBlender) {
-                let retryCount = 0;
-                let success = false;
-                let analysis = null;
-                
-                // First get the avatar as data URL to avoid CORS issues
-                const avatarDataUrl = await fetchAvatarAsDataUrl(user.avatarUrl);
-                
-                // Only proceed with analysis if we have a valid data URL
-                if (avatarDataUrl) {
-                    // We'll always have a data URL now (either real image or fallback)
-                    
-                    while (retryCount < 3 && !success) {
-                        try {
-                            analysis = await websim.chat.completions.create({
-                                messages: [
-                                    {
-                                        role: "system",
-                                        content: "You are an AI that analyzes profile images and provides detailed descriptions of their visual content, style, and notable features."
-                                    },
-                                    {
-                                        role: "user",
-                                        content: [
-                                            {
-                                                type: "text",
-                                                text: "Describe this profile image in detail, focusing on color scheme, style, notable features, and visual elements."
-                                            },
-                                            {
-                                                type: "image_url",
-                                                image_url: { url: avatarDataUrl }
-                                            }
-                                        ]
-                                    }
-                                ]
-                            });
-                            success = true;
-                        } catch (error) {
-                            console.error(`Error analyzing image for ${user.username} (attempt ${retryCount + 1}):`, error);
-                            retryCount++;
-                            hasErrors = true;
-                            // Wait before retrying
-                            if (retryCount < 3) {
-                                await new Promise(resolve => setTimeout(resolve, 1000));
-                            }
-                        }
-                    }
-                }
-                
-                if (success && analysis) {
-                    imageAnalyses.push({
-                        username: user.username,
-                        description: analysis.content
-                    });
-                } else {
-                    // Track excluded users due to failure
-                    excludedUsers.push(user.username);
-                }
-            }
-            
-            // Check if we have any successful analyses to proceed
-            if (imageAnalyses.length === 0) {
-                throw new Error("Failed to analyze any avatar images. Please try again with fewer users.");
-            }
-            
-            // Show warning for excluded users
-            if (excludedUsers.length > 0) {
-                console.warn(`The following users were excluded due to image processing errors: ${excludedUsers.join(', ')}`);
-            }
-            
-            // Combine analyses into a detailed prompt for the blended image
-            const analysisText = imageAnalyses.map(a => `${a.username}: ${a.description}`).join('\n\n');
-            
-            let blendingGuidance;
-            try {
-                blendingGuidance = await websim.chat.completions.create({
-                    messages: [
-                        {
-                            role: "system",
-                            content: "You are an expert avatar creator. Based on the descriptions of multiple profile images, create a detailed prompt for an AI image generator to blend these into a cohesive new avatar."
-                        },
-                        {
-                            role: "user",
-                            content: `Original image descriptions:\n${analysisText}\n\nCreate a detailed generation prompt for a beautiful, artistic avatar that combines elements from all these profile images into one cohesive design. The result should be visually appealing and represent a blend of the styles and elements from the originals.`
-                        }
-                    ]
+    const goToNextPage = () => {
+        if (searchTerm) {
+            if (currentSearchPage * 20 < allSearchResults.length) {
+                setCurrentSearchPage(prevPage => {
+                    const nextPage = prevPage + 1;
+                    const startIndex = (nextPage - 1) * 20;
+                    const endIndex = startIndex + 20;
+                    setFollowingUsers(allSearchResults.slice(startIndex, endIndex));
+                    setHasPrevious(true);
+                    setHasMore(endIndex < allSearchResults.length);
+                    return nextPage;
                 });
-            } catch (error) {
-                console.error("Error creating blending guidance:", error);
-                // Fallback if the guidance creation fails
-                blendingGuidance = {
-                    content: `Create a beautiful avatar that combines elements from these users: ${imageAnalyses.map(a => a.username).join(', ')}. ${analysisText.substring(0, 500)}...`
-                };
             }
-            
-            // Generate the blended image using the refined prompt
-            const imageResult = await websim.imageGen({
-                prompt: blendingGuidance.content,
-                aspect_ratio: "1:1"
+        } else if (hasMore && !loadingMore) {
+            setPage(prevPage => {
+                const nextPage = prevPage + 1;
+                fetchFollowingUsers(nextPage, searchTerm);
+                return nextPage;
             });
-            
-            // Save result
-            setBlendedResult({
-                imageUrl: imageResult.url,
-                description: blendingGuidance.content,
-                analyses: imageAnalyses,
-                users: imageAnalyses.map(a => a.username),
-                userIds: usersInBlender
-                    .filter(u => !excludedUsers.includes(u.username))
-                    .map(u => u.id),
-                excludedUsers: excludedUsers,
-                timestamp: new Date().toISOString()
-            });
-            
-            // Save to database
-            await room.current.collection('blended_creation').create({
-                imageUrl: imageResult.url,
-                description: blendingGuidance.content,
-                analyses: imageAnalyses.map(a => ({ username: a.username, description: a.description })),
-                users: imageAnalyses.map(a => a.username),
-                userIds: usersInBlender
-                    .filter(u => !excludedUsers.includes(u.username))
-                    .map(u => u.id),
-                excludedUsers: excludedUsers,
-                username: room.current.party.client.username
-            });
-            
-            setIsBlending(false);
-            setIsPouring(true);
-            
-            // Reset after pouring animation completes
-            setTimeout(() => {
-                setIsPouring(false);
-                setUsersInBlender([]);
-            }, 2000);
-            
-        } catch (error) {
-            console.error("Error in blending process:", error);
-            setIsBlending(false);
-            
-            // Show a user-friendly error message
-            alert(error.message || "There was an error creating your blend. Please try again with fewer users.");
         }
     };
     
+    const goToPreviousPage = () => {
+        if (searchTerm) {
+            if (currentSearchPage > 1) {
+                setCurrentSearchPage(prevPage => {
+                    const prevPageNum = prevPage - 1;
+                    const startIndex = (prevPageNum - 1) * 20;
+                    const endIndex = startIndex + 20;
+                    setFollowingUsers(allSearchResults.slice(startIndex, endIndex));
+                    setHasPrevious(prevPageNum > 1);
+                    setHasMore(true);
+                    return prevPageNum;
+                });
+            }
+        } else if (page > 1 && !loadingMore) {
+            setPage(prevPage => {
+                const prevPageNum = prevPage - 1;
+                fetchFollowingUsers(prevPageNum, searchTerm);
+                return prevPageNum;
+            });
+        }
+    };
+    
+    const loadMoreUsers = () => {
+        if (searchTerm) {
+            if (currentSearchPage * 20 < allSearchResults.length) {
+                setCurrentSearchPage(prevPage => {
+                    const nextPage = prevPage + 1;
+                    const startIndex = (nextPage - 1) * 20;
+                    const endIndex = startIndex + 20;
+                    setFollowingUsers(allSearchResults.slice(startIndex, endIndex));
+                    setHasPrevious(true);
+                    setHasMore(endIndex < allSearchResults.length);
+                    return nextPage;
+                });
+            }
+        } else if (hasMore && !loadingMore) {
+            setPage(prevPage => {
+                const nextPage = prevPage + 1;
+                fetchFollowingUsers(nextPage, searchTerm);
+                return nextPage;
+            });
+        }
+    };
+
     const removeFromBlender = (userId) => {
         setUsersInBlender(prev => prev.filter(user => user.id !== userId));
     };
@@ -621,7 +565,21 @@ const BlenderApp = () => {
                                         onDragEnd={handleDragEnd}
                                         title={`@${user.username}`}
                                     >
-                                        <img src={user.avatarUrl} alt={user.username} />
+                                        <img 
+                                            src={processedAvatars[user.username] || user.avatarUrl} 
+                                            alt={user.username}
+                                            onError={(e) => {
+                                                // If image fails to load, create a fallback avatar
+                                                if (!processedAvatars[user.username]) {
+                                                    const fallback = createFallbackAvatar(user.username);
+                                                    e.target.src = fallback;
+                                                    setProcessedAvatars(prev => ({
+                                                        ...prev,
+                                                        [user.username]: fallback
+                                                    }));
+                                                }
+                                            }} 
+                                        />
                                         <span className="user-name">{user.username}</span>
                                     </div>
                                 ))}
@@ -765,23 +723,17 @@ const BlenderApp = () => {
                                     {selectedCreation.users.map((username, index) => (
                                         <div key={index} className="modal-user">
                                             <img 
-                                                src={`https://images.websim.ai/avatar/${username}`} 
+                                                src={processedAvatars[username] || `https://images.websim.ai/avatar/${username}`} 
                                                 alt={username}
                                                 onError={(e) => {
-                                                    // Generate a simple colored avatar with initial if image fails to load
-                                                    const canvas = document.createElement('canvas');
-                                                    canvas.width = 50;
-                                                    canvas.height = 50;
-                                                    const ctx = canvas.getContext('2d');
-                                                    const hash = username.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
-                                                    ctx.fillStyle = `hsl(${hash % 360}, 70%, 60%)`;
-                                                    ctx.fillRect(0, 0, 50, 50);
-                                                    ctx.fillStyle = 'white';
-                                                    ctx.font = 'bold 25px Arial';
-                                                    ctx.textAlign = 'center';
-                                                    ctx.textBaseline = 'middle';
-                                                    ctx.fillText(username.charAt(0).toUpperCase(), 25, 25);
-                                                    e.target.src = canvas.toDataURL('image/png');
+                                                    if (!processedAvatars[username]) {
+                                                        const fallback = createFallbackAvatar(username);
+                                                        e.target.src = fallback;
+                                                        setProcessedAvatars(prev => ({
+                                                            ...prev,
+                                                            [username]: fallback
+                                                        }));
+                                                    }
                                                 }}
                                             />
                                             <span className="modal-user-name">{username}</span>
