@@ -10,11 +10,13 @@ const BlenderApp = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [page, setPage] = useState(1);
     const [searchTerm, setSearchTerm] = useState("");
+    const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
     const [hasMore, setHasMore] = useState(false);
     const [hasPrevious, setHasPrevious] = useState(false);
     const [loadingMore, setLoadingMore] = useState(false);
     const blenderRef = useRef(null);
     const room = useRef(null);
+    const searchTimeoutRef = useRef(null);
 
     useEffect(() => {
         // Create WebSocket connection
@@ -44,6 +46,29 @@ const BlenderApp = () => {
             });
         }
     }, [room.current]);
+
+    useEffect(() => {
+        // Clear previous timeout
+        if (searchTimeoutRef.current) {
+            clearTimeout(searchTimeoutRef.current);
+        }
+        
+        // Set a new timeout
+        searchTimeoutRef.current = setTimeout(() => {
+            setDebouncedSearchTerm(searchTerm);
+        }, 500); // 500ms delay
+        
+        // Cleanup function
+        return () => {
+            if (searchTimeoutRef.current) {
+                clearTimeout(searchTimeoutRef.current);
+            }
+        };
+    }, [searchTerm]);
+    
+    useEffect(() => {
+        fetchFollowingUsers(1, debouncedSearchTerm);
+    }, [debouncedSearchTerm]);
 
     const fetchFollowingUsers = async (pageNum = 1, search = "") => {
         try {
@@ -148,15 +173,11 @@ const BlenderApp = () => {
         }
     };
     
-    useEffect(() => {
-        fetchFollowingUsers(1, searchTerm);
-    }, [searchTerm]);
-    
     const goToNextPage = () => {
         if (hasMore && !loadingMore) {
             setPage(prevPage => {
                 const nextPage = prevPage + 1;
-                fetchFollowingUsers(nextPage, searchTerm);
+                fetchFollowingUsers(nextPage, debouncedSearchTerm);
                 return nextPage;
             });
         }
@@ -166,7 +187,7 @@ const BlenderApp = () => {
         if (page > 1 && !loadingMore) {
             setPage(prevPage => {
                 const prevPageNum = prevPage - 1;
-                fetchFollowingUsers(prevPageNum, searchTerm);
+                fetchFollowingUsers(prevPageNum, debouncedSearchTerm);
                 return prevPageNum;
             });
         }
@@ -176,7 +197,7 @@ const BlenderApp = () => {
         if (hasMore && !loadingMore) {
             setPage(prevPage => {
                 const nextPage = prevPage + 1;
-                fetchFollowingUsers(nextPage, searchTerm);
+                fetchFollowingUsers(nextPage, debouncedSearchTerm);
                 return nextPage;
             });
         }
