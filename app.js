@@ -348,16 +348,16 @@ const BlenderApp = () => {
                         if (retryCount < maxRetries) {
                             retryCount++;
                             console.log(`Retry attempt ${retryCount} for ${avatarUrl}`);
-                            // Add cache-busting parameter to avoid cached error responses
-                            img.src = `${avatarUrl}?retry=${retryCount}&t=${Date.now()}`;
+                            // Try with CORS proxy on retry
+                            img.src = `https://corsproxy.io/?${encodeURIComponent(`${avatarUrl}?retry=${retryCount}&t=${Date.now()}`)}`;
                         } else {
                             createFallbackAvatar(avatarUrl, resolve);
                         }
                     };
                     
-                    // Generate a fallback immediately without trying the network request
-                    // to avoid CORS errors entirely
-                    createFallbackAvatar(avatarUrl, resolve);
+                    // Initial load attempt with crossOrigin attribute and CORS proxy
+                    img.crossOrigin = 'anonymous';
+                    img.src = `https://corsproxy.io/?${encodeURIComponent(avatarUrl)}`;
                 };
                 
                 const createFallbackAvatar = (url, resolver) => {
@@ -417,12 +417,13 @@ const BlenderApp = () => {
                 let success = false;
                 let analysis = null;
                 
-                // Get the avatar as data URL - this now always returns a valid image (real or fallback)
+                // First get the avatar as data URL to avoid CORS issues
                 const avatarDataUrl = await fetchAvatarAsDataUrl(user.avatarUrl);
                 
                 // Only proceed with analysis if we have a valid data URL
                 if (avatarDataUrl) {
-                    // Try to analyze the image
+                    // We'll always have a data URL now (either real image or fallback)
+                    
                     while (retryCount < 3 && !success) {
                         try {
                             analysis = await websim.chat.completions.create({
@@ -744,7 +745,7 @@ const BlenderApp = () => {
                                     {selectedCreation.users.map((username, index) => (
                                         <div key={index} className="modal-user">
                                             <img 
-                                                src={`https://images.websim.ai/avatar/${username}`} 
+                                                src={`https://corsproxy.io/?${encodeURIComponent(`https://images.websim.ai/avatar/${username}`)}`}
                                                 alt={username}
                                                 onError={(e) => {
                                                     // Generate a simple colored avatar with initial if image fails to load
