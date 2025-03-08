@@ -321,71 +321,35 @@ const BlenderApp = () => {
 
     const fetchAvatarAsDataUrl = async (avatarUrl) => {
         try {
-            // Create an image element
-            const img = document.createElement('img');
+            // Instead of trying to load the image from the server,
+            // Generate a local avatar with the username
+            const username = avatarUrl.split('/').pop().split('?')[0]; // Get username from URL
             
-            return new Promise((resolve, reject) => {
-                let retryCount = 0;
-                const maxRetries = 3;
-                
-                const loadImage = () => {
-                    img.onload = () => {
-                        try {
-                            const canvas = document.createElement('canvas');
-                            canvas.width = img.width;
-                            canvas.height = img.height;
-                            const ctx = canvas.getContext('2d');
-                            ctx.drawImage(img, 0, 0);
-                            resolve(canvas.toDataURL('image/png'));
-                        } catch (err) {
-                            console.error('Error converting image to data URL:', err);
-                            createFallbackAvatar(avatarUrl, resolve);
-                        }
-                    };
-                    
-                    img.onerror = (err) => {
-                        console.error('Error loading avatar:', err);
-                        if (retryCount < maxRetries) {
-                            retryCount++;
-                            console.log(`Retry attempt ${retryCount} for ${avatarUrl}`);
-                            // Add cache-busting parameter to avoid cached error responses
-                            img.src = `${avatarUrl}?retry=${retryCount}&t=${Date.now()}`;
-                        } else {
-                            createFallbackAvatar(avatarUrl, resolve);
-                        }
-                    };
-                    
-                    // Initial load attempt with crossOrigin attribute
-                    img.crossOrigin = 'anonymous';
-                    img.src = avatarUrl;
-                };
-                
-                const createFallbackAvatar = (url, resolver) => {
-                    // Generate a fallback avatar with a colored background and initial
-                    const canvas = document.createElement('canvas');
-                    canvas.width = 200;
-                    canvas.height = 200;
-                    const ctx = canvas.getContext('2d');
-                    // Generate a color based on username for consistency
-                    const username = url.split('/').pop();
-                    const hash = username.split('').reduce((a, b) => {
-                        return a + b.charCodeAt(0);
-                    }, 0);
-                    ctx.fillStyle = `hsl(${hash % 360}, 70%, 60%)`;
-                    ctx.fillRect(0, 0, 200, 200);
-                    // Add text initial
-                    ctx.fillStyle = 'white';
-                    ctx.font = 'bold 100px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(username.charAt(0).toUpperCase(), 100, 100);
-                    resolver(canvas.toDataURL('image/png'));
-                };
-                
-                loadImage();
-            });
+            // Generate a color based on username for consistency
+            const hash = username.split('').reduce((a, b) => {
+                return a + b.charCodeAt(0);
+            }, 0);
+            
+            // Create canvas for the avatar
+            const canvas = document.createElement('canvas');
+            canvas.width = 200;
+            canvas.height = 200;
+            const ctx = canvas.getContext('2d');
+            
+            // Fill background with a color derived from username
+            ctx.fillStyle = `hsl(${hash % 360}, 70%, 60%)`;
+            ctx.fillRect(0, 0, 200, 200);
+            
+            // Add text initial
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 100px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(username.charAt(0).toUpperCase(), 100, 100);
+            
+            return canvas.toDataURL('image/png');
         } catch (error) {
-            console.error('Error fetching avatar:', error);
+            console.error('Error creating avatar:', error);
             // Return a fallback image with a colored background
             const canvas = document.createElement('canvas');
             canvas.width = 200;
