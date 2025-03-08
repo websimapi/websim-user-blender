@@ -656,14 +656,32 @@ const BlenderApp = () => {
             const link = document.createElement('a');
             
             // Fetch the image and convert to blob
-            const response = await fetch(imageUrl);
-            const blob = await response.blob();
+            const response = await fetch(imageUrl, { 
+                mode: 'cors',
+                headers: {
+                    'Access-Control-Allow-Origin': '*'
+                }
+            });
             
-            // Create a local URL for the blob
-            const objectUrl = URL.createObjectURL(blob);
+            if (!response.ok) {
+                // If direct fetch fails, try using a CORS proxy
+                const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(imageUrl)}`;
+                const proxyResponse = await fetch(proxyUrl);
+                
+                if (!proxyResponse.ok) {
+                    throw new Error('Failed to download image through proxy');
+                }
+                
+                const blob = await proxyResponse.blob();
+                const objectUrl = URL.createObjectURL(blob);
+                link.href = objectUrl;
+            } else {
+                const blob = await response.blob();
+                const objectUrl = URL.createObjectURL(blob);
+                link.href = objectUrl;
+            }
             
             // Set up the download
-            link.href = objectUrl;
             link.download = `blended-avatar-${username || 'websim'}.png`;
             
             // Trigger the download
@@ -672,10 +690,42 @@ const BlenderApp = () => {
             
             // Clean up
             document.body.removeChild(link);
-            URL.revokeObjectURL(objectUrl);
+            setTimeout(() => URL.revokeObjectURL(link.href), 100);
         } catch (error) {
             console.error("Error downloading image:", error);
-            alert("Failed to download image. Please try again.");
+            
+            // Try alternate download method if first method fails
+            try {
+                // Create new image and canvas as fallback
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0);
+                    
+                    const link = document.createElement('a');
+                    link.download = `blended-avatar-${username || 'websim'}.png`;
+                    link.href = canvas.toDataURL('image/png');
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                };
+                
+                // Try with various CORS proxies
+                img.onerror = function() {
+                    alert("Failed to download image. Please try right-clicking the image and selecting 'Save Image As...'");
+                };
+                
+                // Add timestamp to avoid caching
+                img.src = `https://corsproxy.io/?${encodeURIComponent(imageUrl)}?t=${Date.now()}`;
+            } catch (fallbackError) {
+                console.error("Fallback download failed:", fallbackError);
+                alert("Failed to download image. Please try right-clicking the image and selecting 'Save Image As...'");
+            }
         }
     };
 
