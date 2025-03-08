@@ -195,7 +195,10 @@ const BlenderApp = () => {
     const fetchAvatarAsDataUrl = async (avatarUrl) => {
         try {
             // Create a canvas to convert the image
-            const response = await fetch(avatarUrl);
+            const response = await fetch(avatarUrl, { 
+                mode: 'cors',
+                cache: 'no-cache'
+            });
             const blob = await response.blob();
             
             return new Promise((resolve, reject) => {
@@ -244,9 +247,9 @@ const BlenderApp = () => {
                     continue;
                 }
                 
-                // Wait 2 seconds between each image analysis to avoid rate limiting
+                // Wait 3 seconds between each image analysis to avoid rate limiting
                 if (imageAnalyses.length > 0) {
-                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    await new Promise(resolve => setTimeout(resolve, 3000));
                 }
                 
                 while (retryCount < 3 && !success) {
@@ -276,9 +279,9 @@ const BlenderApp = () => {
                     } catch (error) {
                         console.error(`Error analyzing image for ${user.username} (attempt ${retryCount + 1}):`, error);
                         retryCount++;
-                        // Wait before retrying
+                        // Wait longer before retrying
                         if (retryCount < 3) {
-                            await new Promise(resolve => setTimeout(resolve, 2000));
+                            await new Promise(resolve => setTimeout(resolve, 3000));
                         }
                     }
                 }
