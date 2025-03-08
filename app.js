@@ -55,10 +55,61 @@ const BlenderApp = () => {
             
             setLoadingMore(pageNum > 1);
             
-            // Fix pagination by using cursors properly
+            // If searching, load all users and then filter
+            if (search) {
+                setIsLoading(true);
+                let allUsers = [];
+                let hasNextPage = true;
+                let cursor = null;
+                
+                // Fetch all pages when searching
+                while (hasNextPage) {
+                    let url = `/api/v1/user/following?first=100`;
+                    if (cursor) {
+                        url += `&after=${cursor}`;
+                    }
+                    
+                    const response = await fetch(url);
+                    const data = await response.json();
+                    
+                    if (!data.following || !data.following.data) {
+                        console.error("Unexpected API response format:", data);
+                        break;
+                    }
+                    
+                    const followingData = data.following.data.map(item => ({
+                        id: item.follow.user.id,
+                        username: item.follow.user.username,
+                        avatarUrl: `https://images.websim.ai/avatar/${item.follow.user.username}`,
+                        cursor: item.cursor
+                    }));
+                    
+                    allUsers = [...allUsers, ...followingData];
+                    hasNextPage = data.following.meta.has_next_page;
+                    
+                    if (hasNextPage && data.following.data.length > 0) {
+                        cursor = data.following.data[data.following.data.length - 1].cursor;
+                    } else {
+                        break;
+                    }
+                }
+                
+                // Filter all users by search term
+                const filteredUsers = allUsers.filter(user => 
+                    user.username.toLowerCase().includes(search.toLowerCase())
+                );
+                
+                setFollowingUsers(filteredUsers);
+                setHasMore(false); // No more pages when searching
+                setHasPrevious(false); // No previous pages when searching
+                setIsLoading(false);
+                setLoadingMore(false);
+                return;
+            }
+            
+            // Regular pagination if not searching
             let url = `/api/v1/user/following?first=20`;
             
-            // If there's a cursor stored for pagination, use it
             if (pageNum > 1 && followingUsers.length > 0) {
                 const lastIndex = followingUsers.length - 1;
                 const lastCursor = followingUsers[lastIndex]?.cursor;
@@ -83,8 +134,7 @@ const BlenderApp = () => {
                     username: item.follow.user.username,
                     avatarUrl: `https://images.websim.ai/avatar/${item.follow.user.username}`,
                     cursor: item.cursor
-                }))
-                .filter(user => !search || user.username.toLowerCase().includes(search.toLowerCase()));
+                }));
             
             setFollowingUsers(followingData);
             setHasMore(data.following.meta.has_next_page);
