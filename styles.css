@@ -28,28 +28,42 @@ body {
 .following-list {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
+    gap: 15px;
     margin-bottom: 20px;
+    justify-content: center;
 }
 
 .user-item {
     position: relative;
+    width: 80px;
+    height: 110px;
+    cursor: grab;
+    transition: transform 0.2s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.user-item img {
     width: 60px;
     height: 60px;
     border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid #9dd1ff;
+}
+
+.user-name {
+    font-size: 12px;
+    margin-top: 5px;
+    text-align: center;
+    max-width: 80px;
     overflow: hidden;
-    cursor: grab;
-    transition: transform 0.2s;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .user-item:hover {
     transform: scale(1.1);
-}
-
-.user-item img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
 }
 
 .user-item.dragging {
@@ -205,3 +219,39 @@ body {
     100% { transform: translateY(0); opacity: 1; }
 }
 
+.search-container {
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: center;
+}
+
+.search-input {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 20px;
+    width: 100%;
+    max-width: 300px;
+    font-size: 14px;
+}
+
+.load-more-button {
+    background-color: #3498db;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+    margin: 10px auto 20px;
+    display: block;
+    transition: background-color 0.3s;
+}
+
+.load-more-button:hover {
+    background-color: #2980b9;
+}
+
+.load-more-button:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+}

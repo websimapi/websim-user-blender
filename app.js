@@ -8,6 +8,10 @@ const BlenderApp = () => {
     const [blendedResult, setBlendedResult] = useState(null);
     const [creations, setCreations] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [page, setPage] = useState(1);
+    const [searchTerm, setSearchTerm] = useState("");
+    const [hasMore, setHasMore] = useState(false);
+    const [loadingMore, setLoadingMore] = useState(false);
     const blenderRef = useRef(null);
     const room = useRef(null);
 
@@ -40,7 +44,7 @@ const BlenderApp = () => {
         }
     }, [room.current]);
 
-    const fetchFollowingUsers = async () => {
+    const fetchFollowingUsers = async (pageNum = 1, search = "") => {
         try {
             const user = await window.websim.getUser();
             if (!user) {
@@ -48,20 +52,46 @@ const BlenderApp = () => {
                 return;
             }
             
-            const response = await fetch(`/api/v1/users/${user.username}/following`);
+            setLoadingMore(pageNum > 1);
+            const pageSize = 20;
+            const response = await fetch(`/api/v1/users/${user.username}/following?first=${pageSize}&after=${(pageNum-1) * pageSize > 0 ? (pageNum-1) * pageSize : ''}`);
             const data = await response.json();
             
-            const followingData = data.following.data.map(item => ({
-                id: item.follow.user.id,
-                username: item.follow.user.username,
-                avatarUrl: `https://images.websim.ai/avatar/${item.follow.user.username}`
-            }));
+            const followingData = data.following.data
+                .map(item => ({
+                    id: item.follow.user.id,
+                    username: item.follow.user.username,
+                    avatarUrl: `https://images.websim.ai/avatar/${item.follow.user.username}`
+                }))
+                .filter(user => !search || user.username.toLowerCase().includes(search.toLowerCase()));
             
-            setFollowingUsers(followingData);
+            if (pageNum === 1) {
+                setFollowingUsers(followingData);
+            } else {
+                setFollowingUsers(prev => [...prev, ...followingData]);
+            }
+            
+            setHasMore(data.following.meta.has_next_page);
             setIsLoading(false);
+            setLoadingMore(false);
         } catch (error) {
             console.error("Error fetching following users:", error);
             setIsLoading(false);
+            setLoadingMore(false);
+        }
+    };
+    
+    useEffect(() => {
+        fetchFollowingUsers(1, searchTerm);
+    }, [searchTerm]);
+    
+    const loadMoreUsers = () => {
+        if (hasMore && !loadingMore) {
+            setPage(prevPage => {
+                const nextPage = prevPage + 1;
+                fetchFollowingUsers(nextPage, searchTerm);
+                return nextPage;
+            });
         }
     };
     
@@ -161,68 +191,113 @@ const BlenderApp = () => {
         setIsBlending(true);
         
         try {
-            // Analyze each user's profile picture
+            // Analyze each user's profile picture with retry logic
             const analyses = await Promise.all(usersInBlender.map(async (user) => {
-                const result = await websim.chat.completions.create({
-                    messages: [
-                        {
-                            role: "system",
-                            content: `Analyze this user profile picture in detail. Focus on the subject, colors, style, mood, and any distinct elements.`
-                        },
-                        {
-                            role: "user",
-                            content: [
+                let attempts = 0;
+                const maxAttempts = 3;
+                
+                while (attempts < maxAttempts) {
+                    try {
+                        const result = await websim.chat.completions.create({
+                            messages: [
                                 {
-                                    type: "text",
-                                    text: `This is the profile picture of user: ${user.username}. Please provide a detailed JSON analysis.`
+                                    role: "system",
+                                    content: `Analyze this user profile picture in detail. Focus on the subject, colors, style, mood, and any distinct elements.`
                                 },
                                 {
-                                    type: "image_url",
-                                    image_url: { url: user.avatarUrl }
+                                    role: "user",
+                                    content: [
+                                        {
+                                            type: "text",
+                                            text: `This is the profile picture of user: ${user.username}. Please describe what you see in simple terms, focusing on colors, style, and main elements.`
+                                        },
+                                        {
+                                            type: "image_url",
+                                            image_url: { url: user.avatarUrl }
+                                        }
+                                    ]
                                 }
                             ]
+                        });
+                        
+                        // If we get here, the request succeeded
+                        return {
+                            username: user.username,
+                            analysis: {
+                                description: result.content,
+                                colors: extractColors(result.content),
+                                elements: extractElements(result.content)
+                            }
+                        };
+                    } catch (error) {
+                        console.error(`Attempt ${attempts + 1} failed for user ${user.username}:`, error);
+                        attempts++;
+                        
+                        if (attempts >= maxAttempts) {
+                            // If all attempts fail, return a simplified fallback analysis
+                            return {
+                                username: user.username,
+                                analysis: {
+                                    description: `Profile picture of ${user.username}`,
+                                    colors: ["blue", "white"],
+                                    elements: ["profile", "avatar"]
+                                }
+                            };
                         }
-                    ],
-                    json: true
-                });
-                
-                return {
-                    username: user.username,
-                    analysis: JSON.parse(result.content)
-                };
+                        
+                        // Wait before retrying (exponential backoff)
+                        await new Promise(resolve => setTimeout(resolve, 1000 * attempts));
+                    }
+                }
             }));
+            
+            // Extract colors and elements from analysis text
+            function extractColors(text) {
+                const commonColors = ["red", "blue", "green", "yellow", "orange", "purple", "pink", 
+                                    "black", "white", "gray", "brown", "teal", "cyan", "magenta"];
+                const colors = [];
+                
+                for (const color of commonColors) {
+                    if (text.toLowerCase().includes(color)) {
+                        colors.push(color);
+                    }
+                }
+                
+                return colors.length > 0 ? colors : ["blue", "purple", "pink"];
+            }
+            
+            function extractElements(text) {
+                const keywords = text.split(/\s+/)
+                    .filter(word => word.length > 4)
+                    .filter(word => !commonColors.includes(word.toLowerCase()))
+                    .slice(0, 5);
+                
+                return keywords.length > 0 ? keywords : ["portrait", "profile"];
+            }
             
             // Generate a blended idea from all analyses
             const blendPrompt = analyses.map(a => 
-                `User ${a.username}: ${JSON.stringify(a.analysis)}`
+                `User ${a.username}: ${a.analysis.description}`
             ).join("\n\n");
             
-            const blendedResult = await websim.chat.completions.create({
-                messages: [
-                    {
-                        role: "system",
-                        content: `You are an image blender. Based on the detailed analyses of these profile pictures, create a coherent description for a single blended image that incorporates elements from all of them. Return a JSON with keys: description, style, colors, mood, and elements.`
-                    },
-                    {
-                        role: "user",
-                        content: blendPrompt
-                    }
-                ],
-                json: true
-            });
+            // Generate the final blended image with simplified approach
+            const allColors = analyses.flatMap(a => a.analysis.colors).filter((v, i, a) => a.indexOf(v) === i);
+            const allElements = analyses.flatMap(a => a.analysis.elements).filter((v, i, a) => a.indexOf(v) === i);
             
-            const blendedDescription = JSON.parse(blendedResult.content);
+            const colorString = allColors.join(", ");
+            const elementString = allElements.join(", ");
             
-            // Generate the final blended image
+            const description = `A creative blend of profile images featuring ${elementString} with colors like ${colorString}`;
+            
             const imageResult = await websim.imageGen({
-                prompt: `${blendedDescription.description}. Style: ${blendedDescription.style}. Colors: ${blendedDescription.colors}. Mood: ${blendedDescription.mood}. Key elements: ${blendedDescription.elements}.`,
+                prompt: description,
                 aspect_ratio: "1:1"
             });
             
             // Save result
             setBlendedResult({
                 imageUrl: imageResult.url,
-                description: blendedDescription.description,
+                description: description,
                 users: usersInBlender.map(u => u.username),
                 userIds: usersInBlender.map(u => u.id),
                 timestamp: new Date().toISOString()
@@ -231,7 +306,7 @@ const BlenderApp = () => {
             // Save to database
             await room.current.collection('blended_creation').create({
                 imageUrl: imageResult.url,
-                description: blendedDescription.description,
+                description: description,
                 users: usersInBlender.map(u => u.username),
                 userIds: usersInBlender.map(u => u.id)
             });
@@ -248,9 +323,12 @@ const BlenderApp = () => {
         } catch (error) {
             console.error("Error in blending process:", error);
             setIsBlending(false);
+            
+            // Show a user-friendly error message
+            alert("There was an error creating your blend. Please try again with fewer users.");
         }
     };
-
+    
     const removeFromBlender = (userId) => {
         setUsersInBlender(prev => prev.filter(user => user.id !== userId));
     };
@@ -259,28 +337,51 @@ const BlenderApp = () => {
         <div className="container">
             <h1 className="title">User Blender</h1>
             
-            {isLoading ? (
+            {isLoading && page === 1 ? (
                 <div className="loading-spinner"></div>
             ) : (
                 <>
                     <h2>Your Following</h2>
+                    <div className="search-container">
+                        <input 
+                            type="text" 
+                            placeholder="Search users..." 
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="search-input"
+                        />
+                    </div>
+                    
                     {followingUsers.length === 0 ? (
-                        <p>You aren't following anyone yet.</p>
+                        <p>{searchTerm ? "No users match your search." : "You aren't following anyone yet."}</p>
                     ) : (
-                        <div className="following-list">
-                            {followingUsers.map(user => (
-                                <div 
-                                    key={user.id}
-                                    className="user-item"
-                                    draggable
-                                    onDragStart={(e) => handleDragStart(e, user)}
-                                    onDragEnd={handleDragEnd}
-                                    title={`@${user.username}`}
+                        <>
+                            <div className="following-list">
+                                {followingUsers.map(user => (
+                                    <div 
+                                        key={user.id}
+                                        className="user-item"
+                                        draggable
+                                        onDragStart={(e) => handleDragStart(e, user)}
+                                        onDragEnd={handleDragEnd}
+                                        title={`@${user.username}`}
+                                    >
+                                        <img src={user.avatarUrl} alt={user.username} />
+                                        <span className="user-name">{user.username}</span>
+                                    </div>
+                                ))}
+                            </div>
+                            
+                            {hasMore && (
+                                <button 
+                                    className="load-more-button" 
+                                    onClick={loadMoreUsers}
+                                    disabled={loadingMore}
                                 >
-                                    <img src={user.avatarUrl} alt={user.username} />
-                                </div>
-                            ))}
-                        </div>
+                                    {loadingMore ? 'Loading...' : 'Load More'}
+                                </button>
+                            )}
+                        </>
                     )}
                     
                     <div className="blender-section">
@@ -363,4 +464,3 @@ const BlenderApp = () => {
 };
 
 ReactDOM.render(<BlenderApp />, document.getElementById('app'));
-
