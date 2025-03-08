@@ -7,6 +7,27 @@
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Add CORS anywhere polyfill -->
+    <script>
+        // Fallback function if the CORS proxy fails
+        window.createFallbackImage = function(username) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 200;
+            canvas.height = 200;
+            const ctx = canvas.getContext('2d');
+            // Generate a color based on username hash
+            const hash = username.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
+            ctx.fillStyle = `hsl(${hash % 360}, 70%, 60%)`;
+            ctx.fillRect(0, 0, 200, 200);
+            // Add text initial
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 100px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(username.charAt(0).toUpperCase(), 100, 100);
+            return canvas.toDataURL('image/png');
+        };
+    </script>
 </head>
 <body>
     <div id="app"></div>

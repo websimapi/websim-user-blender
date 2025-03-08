@@ -349,19 +349,13 @@ const BlenderApp = () => {
                             retryCount++;
                             console.log(`Retry attempt ${retryCount} for ${avatarUrl}`);
                             
-                            // Try different CORS proxies on each retry
-                            if (retryCount === 1) {
-                                // First retry: try corsProxy.io
-                                const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(avatarUrl);
-                                img.src = proxyUrl;
-                            } else if (retryCount === 2) {
-                                // Second retry: try cors.lol
-                                const proxyUrl = 'https://api.cors.lol/?url=' + encodeURIComponent(avatarUrl);
-                                img.src = proxyUrl;
+                            if (retryCount === 2) {
+                                // On second retry, try with a CORS proxy
+                                console.log(`Trying with CORS proxy for ${avatarUrl}`);
+                                img.src = `https://api.allorigins.win/raw?url=${encodeURIComponent(avatarUrl)}`;
                             } else {
-                                // Third retry: try codetabs proxy
-                                const proxyUrl = 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(avatarUrl);
-                                img.src = proxyUrl;
+                                // Add cache-busting parameter to avoid cached error responses
+                                img.src = `${avatarUrl}?retry=${retryCount}&t=${Date.now()}`;
                             }
                         } else {
                             createFallbackAvatar(avatarUrl, resolve);
@@ -761,26 +755,13 @@ const BlenderApp = () => {
                                                 src={`https://images.websim.ai/avatar/${username}`} 
                                                 alt={username}
                                                 onError={(e) => {
-                                                    // Try CORS proxy first
-                                                    const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(`https://images.websim.ai/avatar/${username}`);
-                                                    e.target.src = proxyUrl;
+                                                    // Try with CORS proxy if direct loading fails
+                                                    e.target.src = `https://api.allorigins.win/raw?url=${encodeURIComponent(`https://images.websim.ai/avatar/${username}`)}`;
                                                     
-                                                    // Set a second onError handler for if the proxy also fails
+                                                    // If that fails too, use the fallback
                                                     e.target.onerror = () => {
-                                                        // Generate a simple colored avatar with initial if image fails to load
-                                                        const canvas = document.createElement('canvas');
-                                                        canvas.width = 50;
-                                                        canvas.height = 50;
-                                                        const ctx = canvas.getContext('2d');
-                                                        const hash = username.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
-                                                        ctx.fillStyle = `hsl(${hash % 360}, 70%, 60%)`;
-                                                        ctx.fillRect(0, 0, 50, 50);
-                                                        ctx.fillStyle = 'white';
-                                                        ctx.font = 'bold 25px Arial';
-                                                        ctx.textAlign = 'center';
-                                                        ctx.textBaseline = 'middle';
-                                                        ctx.fillText(username.charAt(0).toUpperCase(), 25, 25);
-                                                        e.target.src = canvas.toDataURL('image/png');
+                                                        // Generate a simple colored avatar with initial
+                                                        e.target.src = window.createFallbackImage(username);
                                                     };
                                                 }}
                                             />
