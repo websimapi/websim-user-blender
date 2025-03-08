@@ -201,37 +201,54 @@ const BlenderApp = () => {
             // Analyze each user's avatar image
             const imageAnalyses = [];
             for (const user of usersInBlender) {
-                try {
-                    const analysis = await websim.chat.completions.create({
-                        messages: [
-                            {
-                                role: "system",
-                                content: "You are an AI that analyzes profile images and provides detailed descriptions of their visual content, style, and notable features."
-                            },
-                            {
-                                role: "user",
-                                content: [
-                                    {
-                                        type: "text",
-                                        text: "Describe this profile image in detail, focusing on color scheme, style, notable features, and visual elements."
-                                    },
-                                    {
-                                        type: "image_url",
-                                        image_url: { url: user.avatarUrl }
-                                    }
-                                ]
-                            }
-                        ]
-                    });
+                let retryCount = 0;
+                let success = false;
+                let analysis = null;
+                
+                while (retryCount < 3 && !success) {
+                    try {
+                        analysis = await websim.chat.completions.create({
+                            messages: [
+                                {
+                                    role: "system",
+                                    content: "You are an AI that analyzes profile images and provides detailed descriptions of their visual content, style, and notable features."
+                                },
+                                {
+                                    role: "user",
+                                    content: [
+                                        {
+                                            type: "text",
+                                            text: "Describe this profile image in detail, focusing on color scheme, style, notable features, and visual elements."
+                                        },
+                                        {
+                                            type: "image_url",
+                                            image_url: { url: user.avatarUrl }
+                                        }
+                                    ]
+                                }
+                            ]
+                        });
+                        success = true;
+                    } catch (error) {
+                        console.error(`Error analyzing image for ${user.username} (attempt ${retryCount + 1}):`, error);
+                        retryCount++;
+                        // Wait before retrying
+                        if (retryCount < 3) {
+                            await new Promise(resolve => setTimeout(resolve, 1000));
+                        }
+                    }
+                }
+                
+                if (success && analysis) {
                     imageAnalyses.push({
                         username: user.username,
                         description: analysis.content
                     });
-                } catch (error) {
-                    console.error(`Error analyzing image for ${user.username}:`, error);
+                } else {
+                    // Fallback description if all retries failed
                     imageAnalyses.push({
                         username: user.username,
-                        description: `Profile picture of user ${user.username}`
+                        description: `A profile picture for user ${user.username}`
                     });
                 }
             }
@@ -239,18 +256,27 @@ const BlenderApp = () => {
             // Combine analyses into a detailed prompt for the blended image
             const analysisText = imageAnalyses.map(a => `${a.username}: ${a.description}`).join('\n\n');
             
-            const blendingGuidance = await websim.chat.completions.create({
-                messages: [
-                    {
-                        role: "system",
-                        content: "You are an expert avatar creator. Based on the descriptions of multiple profile images, create a detailed prompt for an AI image generator to blend these into a cohesive new avatar."
-                    },
-                    {
-                        role: "user",
-                        content: `Original image descriptions:\n${analysisText}\n\nCreate a detailed generation prompt for a beautiful, artistic avatar that combines elements from all these profile images into one cohesive design. The result should be visually appealing and represent a blend of the styles and elements from the originals.`
-                    }
-                ]
-            });
+            let blendingGuidance;
+            try {
+                blendingGuidance = await websim.chat.completions.create({
+                    messages: [
+                        {
+                            role: "system",
+                            content: "You are an expert avatar creator. Based on the descriptions of multiple profile images, create a detailed prompt for an AI image generator to blend these into a cohesive new avatar."
+                        },
+                        {
+                            role: "user",
+                            content: `Original image descriptions:\n${analysisText}\n\nCreate a detailed generation prompt for a beautiful, artistic avatar that combines elements from all these profile images into one cohesive design. The result should be visually appealing and represent a blend of the styles and elements from the originals.`
+                        }
+                    ]
+                });
+            } catch (error) {
+                console.error("Error creating blending guidance:", error);
+                // Fallback if the guidance creation fails
+                blendingGuidance = {
+                    content: `Create a beautiful avatar that combines elements from these users: ${usersInBlender.map(u => u.username).join(', ')}. ${analysisText.substring(0, 500)}...`
+                };
+            }
             
             // Generate the blended image using the refined prompt
             const imageResult = await websim.imageGen({
@@ -274,7 +300,8 @@ const BlenderApp = () => {
                 description: blendingGuidance.content,
                 analyses: imageAnalyses.map(a => ({ username: a.username, description: a.description })),
                 users: usersInBlender.map(u => u.username),
-                userIds: usersInBlender.map(u => u.id)
+                userIds: usersInBlender.map(u => u.id),
+                username: room.current.party.client.username
             });
             
             setIsBlending(false);
