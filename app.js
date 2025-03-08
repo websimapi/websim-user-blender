@@ -251,8 +251,8 @@ const BlenderApp = () => {
                     users: usersInBlender.map(u => u.username)
                 });
                 
-                // Add longer delay between each analysis (8 seconds)
-                await new Promise(resolve => setTimeout(resolve, 8000));
+                // Add longer delay between each analysis (15 seconds)
+                await new Promise(resolve => setTimeout(resolve, 15000));
                 
                 if (!dataUrl) {
                     // If we couldn't get the avatar, use a fallback description
@@ -271,6 +271,8 @@ const BlenderApp = () => {
                     try {
                         console.log(`Analyzing image for ${user.username} (attempt ${retryCount + 1})`);
                         
+                        // Use a new route for each analysis attempt
+                        const routeSuffix = `${Date.now()}-${retryCount}`;
                         analysis = await websim.chat.completions.create({
                             messages: [
                                 {
@@ -282,7 +284,7 @@ const BlenderApp = () => {
                                     content: [
                                         {
                                             type: "text",
-                                            text: "Describe this profile image in detail, focusing on color scheme, style, notable features, and visual elements."
+                                            text: `Describe this profile image (ID: ${routeSuffix}) in detail, focusing on color scheme, style, notable features, and visual elements.`
                                         },
                                         {
                                             type: "image_url",
@@ -296,9 +298,9 @@ const BlenderApp = () => {
                     } catch (error) {
                         console.error(`Error analyzing image for ${user.username} (attempt ${retryCount + 1}):`, error);
                         retryCount++;
-                        // Wait longer before retrying (10 seconds between retries)
+                        // Wait longer before retrying (15 seconds between retries)
                         if (retryCount < 3) {
-                            await new Promise(resolve => setTimeout(resolve, 10000));
+                            await new Promise(resolve => setTimeout(resolve, 15000));
                         }
                     }
                 }
@@ -329,8 +331,8 @@ const BlenderApp = () => {
             // Combine analyses into a detailed prompt for the blended image
             const analysisText = imageAnalyses.map(a => `${a.username}: ${a.description}`).join('\n\n');
             
-            // Wait a bit before the next API call to avoid rate limits (10 seconds)
-            await new Promise(resolve => setTimeout(resolve, 10000));
+            // Wait a bit before the next API call to avoid rate limits (15 seconds)
+            await new Promise(resolve => setTimeout(resolve, 15000));
             
             let blendingGuidance;
             try {
