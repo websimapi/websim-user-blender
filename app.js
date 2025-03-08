@@ -84,19 +84,8 @@ const BlenderApp = () => {
                         id: item.follow.user.id,
                         username: item.follow.user.username,
                         avatarUrl: `https://images.websim.ai/avatar/${item.follow.user.username}`,
-                        avatarBlob: null, 
                         cursor: item.cursor
                     }));
-                    
-                    // Create fallback avatars immediately for all users
-                    for (const user of followingData) {
-                        try {
-                            const blob = await createColorAvatar(user.username);
-                            user.avatarBlob = URL.createObjectURL(blob);
-                        } catch (error) {
-                            console.error(`Error creating avatar for ${user.username}:`, error);
-                        }
-                    }
                     
                     allUsers = [...allUsers, ...followingData];
                     hasNextPage = data.following.meta.has_next_page;
@@ -155,19 +144,8 @@ const BlenderApp = () => {
                     id: item.follow.user.id,
                     username: item.follow.user.username,
                     avatarUrl: `https://images.websim.ai/avatar/${item.follow.user.username}`,
-                    avatarBlob: null, 
                     cursor: item.cursor
                 }));
-            
-            // Create fallback avatars immediately for all users
-            for (const user of followingData) {
-                try {
-                    const blob = await createColorAvatar(user.username);
-                    user.avatarBlob = URL.createObjectURL(blob);
-                } catch (error) {
-                    console.error(`Error creating avatar for ${user.username}:`, error);
-                }
-            }
             
             setFollowingUsers(followingData);
             setHasMore(data.following.meta.has_next_page);
@@ -180,11 +158,11 @@ const BlenderApp = () => {
             setLoadingMore(false);
         }
     };
-
+    
     useEffect(() => {
         fetchFollowingUsers(1, searchTerm);
     }, [searchTerm]);
-
+    
     const goToNextPage = () => {
         if (searchTerm) {
             if (currentSearchPage * 20 < allSearchResults.length) {
@@ -206,7 +184,7 @@ const BlenderApp = () => {
             });
         }
     };
-
+    
     const goToPreviousPage = () => {
         if (searchTerm) {
             if (currentSearchPage > 1) {
@@ -228,7 +206,7 @@ const BlenderApp = () => {
             });
         }
     };
-
+    
     const loadMoreUsers = () => {
         if (searchTerm) {
             if (currentSearchPage * 20 < allSearchResults.length) {
@@ -250,7 +228,7 @@ const BlenderApp = () => {
             });
         }
     };
-
+    
     const loadCreations = async () => {
         try {
             const savedCreations = room.current.collection('blended_creation').getList();
@@ -293,7 +271,7 @@ const BlenderApp = () => {
             }]);
         }
     };
-
+    
     const animateUsersInBlender = () => {
         setUsersInBlender(prevUsers => {
             if (!blenderRef.current) return prevUsers;
@@ -341,79 +319,86 @@ const BlenderApp = () => {
         });
     };
 
-    const createFallbackAvatar = async (username) => {
-        // First try to create a canvas from the username
-        const canvas = document.createElement('canvas');
-        canvas.width = 200;
-        canvas.height = 200;
-        const ctx = canvas.getContext('2d');
-        
-        // Generate a color based on username for consistency
-        const hash = username.split('').reduce((a, b) => {
-            return a + b.charCodeAt(0);
-        }, 0);
-        ctx.fillStyle = `hsl(${hash % 360}, 70%, 60%)`;
-        ctx.fillRect(0, 0, 200, 200);
-        
-        // Add text initial
-        ctx.fillStyle = 'white';
-        ctx.font = 'bold 100px Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(username.charAt(0).toUpperCase(), 100, 100);
-        
-        // Convert canvas to blob
-        return new Promise((resolve, reject) => {
-            canvas.toBlob(blob => {
-                if (blob) {
-                    resolve(blob);
-                } else {
-                    reject(new Error('Failed to create avatar blob'));
-                }
-            }, 'image/png');
-        });
-    };
-
-    const createColorAvatar = (username) => {
-        const canvas = document.createElement('canvas');
-        canvas.width = 200;
-        canvas.height = 200;
-        const ctx = canvas.getContext('2d');
-        
-        // Generate a color based on username for consistency
-        const hash = username.split('').reduce((a, b) => {
-            return a + b.charCodeAt(0);
-        }, 0);
-        ctx.fillStyle = `hsl(${hash % 360}, 70%, 60%)`;
-        ctx.fillRect(0, 0, 200, 200);
-        
-        // Add text initial
-        ctx.fillStyle = 'white';
-        ctx.font = 'bold 100px Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(username.charAt(0).toUpperCase(), 100, 100);
-        
-        return new Promise(resolve => {
-            canvas.toBlob(blob => resolve(blob), 'image/png');
-        });
-    };
-
-    const fetchAvatarAsDataUrl = async (user) => {
+    const fetchAvatarAsDataUrl = async (avatarUrl) => {
         try {
-            // Always use the local blob if available
-            if (user.avatarBlob) {
-                return user.avatarBlob;
-            }
+            // Create an image element
+            const img = document.createElement('img');
             
-            // Generate a fallback avatar to be safe
-            const blob = await createColorAvatar(user.username);
-            return URL.createObjectURL(blob);
+            return new Promise((resolve, reject) => {
+                let retryCount = 0;
+                const maxRetries = 3;
+                
+                const loadImage = () => {
+                    img.onload = () => {
+                        try {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = img.width;
+                            canvas.height = img.height;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0);
+                            resolve(canvas.toDataURL('image/png'));
+                        } catch (err) {
+                            console.error('Error converting image to data URL:', err);
+                            createFallbackAvatar(avatarUrl, resolve);
+                        }
+                    };
+                    
+                    img.onerror = (err) => {
+                        console.error('Error loading avatar:', err);
+                        if (retryCount < maxRetries) {
+                            retryCount++;
+                            console.log(`Retry attempt ${retryCount} for ${avatarUrl}`);
+                            // Add cache-busting parameter to avoid cached error responses
+                            img.src = `${avatarUrl}?retry=${retryCount}&t=${Date.now()}`;
+                        } else {
+                            createFallbackAvatar(avatarUrl, resolve);
+                        }
+                    };
+                    
+                    // Generate a fallback immediately without trying the network request
+                    // to avoid CORS errors entirely
+                    createFallbackAvatar(avatarUrl, resolve);
+                };
+                
+                const createFallbackAvatar = (url, resolver) => {
+                    // Generate a fallback avatar with a colored background and initial
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 200;
+                    canvas.height = 200;
+                    const ctx = canvas.getContext('2d');
+                    // Generate a color based on username for consistency
+                    const username = url.split('/').pop();
+                    const hash = username.split('').reduce((a, b) => {
+                        return a + b.charCodeAt(0);
+                    }, 0);
+                    ctx.fillStyle = `hsl(${hash % 360}, 70%, 60%)`;
+                    ctx.fillRect(0, 0, 200, 200);
+                    // Add text initial
+                    ctx.fillStyle = 'white';
+                    ctx.font = 'bold 100px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(username.charAt(0).toUpperCase(), 100, 100);
+                    resolver(canvas.toDataURL('image/png'));
+                };
+                
+                loadImage();
+            });
         } catch (error) {
             console.error('Error fetching avatar:', error);
-            // Create a fallback avatar with a colored background
-            const blob = await createColorAvatar(user.username);
-            return URL.createObjectURL(blob);
+            // Return a fallback image with a colored background
+            const canvas = document.createElement('canvas');
+            canvas.width = 200;
+            canvas.height = 200;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#3498db'; // Default blue
+            ctx.fillRect(0, 0, 200, 200);
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 100px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('?', 100, 100);
+            return canvas.toDataURL('image/png');
         }
     };
 
@@ -432,13 +417,12 @@ const BlenderApp = () => {
                 let success = false;
                 let analysis = null;
                 
-                // First get the avatar as data URL to avoid CORS issues
-                const avatarDataUrl = await fetchAvatarAsDataUrl(user);
+                // Get the avatar as data URL - this now always returns a valid image (real or fallback)
+                const avatarDataUrl = await fetchAvatarAsDataUrl(user.avatarUrl);
                 
                 // Only proceed with analysis if we have a valid data URL
                 if (avatarDataUrl) {
-                    // We'll always have a data URL now (either real image or fallback)
-                    
+                    // Try to analyze the image
                     while (retryCount < 3 && !success) {
                         try {
                             analysis = await websim.chat.completions.create({
@@ -484,6 +468,16 @@ const BlenderApp = () => {
                     // Track excluded users due to failure
                     excludedUsers.push(user.username);
                 }
+            }
+            
+            // Check if we have any successful analyses to proceed
+            if (imageAnalyses.length === 0) {
+                throw new Error("Failed to analyze any avatar images. Please try again with fewer users.");
+            }
+            
+            // Show warning for excluded users
+            if (excludedUsers.length > 0) {
+                console.warn(`The following users were excluded due to image processing errors: ${excludedUsers.join(', ')}`);
             }
             
             // Combine analyses into a detailed prompt for the blended image
@@ -560,7 +554,7 @@ const BlenderApp = () => {
             alert(error.message || "There was an error creating your blend. Please try again with fewer users.");
         }
     };
-
+    
     const removeFromBlender = (userId) => {
         setUsersInBlender(prev => prev.filter(user => user.id !== userId));
     };
@@ -606,7 +600,7 @@ const BlenderApp = () => {
                                         onDragEnd={handleDragEnd}
                                         title={`@${user.username}`}
                                     >
-                                        <img src={user.avatarBlob} alt={user.username} />
+                                        <img src={user.avatarUrl} alt={user.username} />
                                         <span className="user-name">{user.username}</span>
                                     </div>
                                 ))}
@@ -647,7 +641,7 @@ const BlenderApp = () => {
                                         key={`${user.id}-${index}`}
                                         className="user-in-blender"
                                         style={{
-                                            backgroundImage: `url(${user.avatarBlob})`,
+                                            backgroundImage: `url(${user.avatarUrl})`,
                                             left: `${user.position.x}px`,
                                             top: `${user.position.y}px`
                                         }}
@@ -752,14 +746,21 @@ const BlenderApp = () => {
                                             <img 
                                                 src={`https://images.websim.ai/avatar/${username}`} 
                                                 alt={username}
-                                                onError={async (e) => {
-                                                    // Generate a colored avatar fallback
-                                                    try {
-                                                        const blob = await createColorAvatar(username);
-                                                        e.target.src = URL.createObjectURL(blob);
-                                                    } catch (err) {
-                                                        console.error("Error creating fallback avatar:", err);
-                                                    }
+                                                onError={(e) => {
+                                                    // Generate a simple colored avatar with initial if image fails to load
+                                                    const canvas = document.createElement('canvas');
+                                                    canvas.width = 50;
+                                                    canvas.height = 50;
+                                                    const ctx = canvas.getContext('2d');
+                                                    const hash = username.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
+                                                    ctx.fillStyle = `hsl(${hash % 360}, 70%, 60%)`;
+                                                    ctx.fillRect(0, 0, 50, 50);
+                                                    ctx.fillStyle = 'white';
+                                                    ctx.font = 'bold 25px Arial';
+                                                    ctx.textAlign = 'center';
+                                                    ctx.textBaseline = 'middle';
+                                                    ctx.fillText(username.charAt(0).toUpperCase(), 25, 25);
+                                                    e.target.src = canvas.toDataURL('image/png');
                                                 }}
                                             />
                                             <span className="modal-user-name">{username}</span>
