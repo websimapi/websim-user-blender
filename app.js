@@ -277,6 +277,8 @@ const BlenderApp = () => {
             }
             
             function extractElements(text) {
+                const commonColors = ["red", "blue", "green", "yellow", "orange", "purple", "pink", 
+                                    "black", "white", "gray", "brown", "teal", "cyan", "magenta"];
                 const keywords = text.split(/\s+/)
                     .filter(word => word.length > 4)
                     .filter(word => !commonColors.includes(word.toLowerCase()))
