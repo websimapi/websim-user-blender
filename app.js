@@ -223,10 +223,6 @@ const BlenderApp = () => {
             // Analyze each user's avatar image
             const imageAnalyses = [];
             for (const user of usersInBlender) {
-                let retryCount = 0;
-                let success = false;
-                let analysis = null;
-                
                 // Show which user we're currently analyzing
                 setBlendedResult({
                     processing: true,
@@ -247,10 +243,13 @@ const BlenderApp = () => {
                     continue;
                 }
                 
-                // Wait 3 seconds between each image analysis to avoid rate limiting
-                if (imageAnalyses.length > 0) {
-                    await new Promise(resolve => setTimeout(resolve, 3000));
-                }
+                // Wait 5 seconds between each image analysis to avoid rate limiting
+                // Always wait, even for the first image (just in case)
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                
+                let retryCount = 0;
+                let success = false;
+                let analysis = null;
                 
                 while (retryCount < 3 && !success) {
                     try {
@@ -281,7 +280,7 @@ const BlenderApp = () => {
                         retryCount++;
                         // Wait longer before retrying
                         if (retryCount < 3) {
-                            await new Promise(resolve => setTimeout(resolve, 3000));
+                            await new Promise(resolve => setTimeout(resolve, 5000));
                         }
                     }
                 }
@@ -311,6 +310,9 @@ const BlenderApp = () => {
             
             // Combine analyses into a detailed prompt for the blended image
             const analysisText = imageAnalyses.map(a => `${a.username}: ${a.description}`).join('\n\n');
+            
+            // Wait a bit before the next API call to avoid rate limits
+            await new Promise(resolve => setTimeout(resolve, 3000));
             
             let blendingGuidance;
             try {
