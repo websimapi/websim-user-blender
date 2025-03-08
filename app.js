@@ -222,7 +222,27 @@ const BlenderApp = () => {
         try {
             // Analyze each user's avatar image
             const imageAnalyses = [];
+            
+            // Process all avatars to data URLs first
+            const avatarData = [];
             for (const user of usersInBlender) {
+                try {
+                    const avatarDataUrl = await fetchAvatarAsDataUrl(user.avatarUrl);
+                    avatarData.push({
+                        user,
+                        dataUrl: avatarDataUrl
+                    });
+                } catch (error) {
+                    console.error(`Error fetching avatar for ${user.username}:`, error);
+                    avatarData.push({
+                        user,
+                        dataUrl: null
+                    });
+                }
+            }
+            
+            // Now analyze each avatar one by one with proper delays
+            for (const { user, dataUrl } of avatarData) {
                 // Show which user we're currently analyzing
                 setBlendedResult({
                     processing: true,
@@ -231,10 +251,10 @@ const BlenderApp = () => {
                     users: usersInBlender.map(u => u.username)
                 });
                 
-                // First get the avatar as data URL to avoid CORS issues
-                const avatarDataUrl = await fetchAvatarAsDataUrl(user.avatarUrl);
+                // Add longer delay between each analysis (8 seconds)
+                await new Promise(resolve => setTimeout(resolve, 8000));
                 
-                if (!avatarDataUrl) {
+                if (!dataUrl) {
                     // If we couldn't get the avatar, use a fallback description
                     imageAnalyses.push({
                         username: user.username,
@@ -243,16 +263,14 @@ const BlenderApp = () => {
                     continue;
                 }
                 
-                // Wait 5 seconds between each image analysis to avoid rate limiting
-                // Always wait, even for the first image (just in case)
-                await new Promise(resolve => setTimeout(resolve, 5000));
-                
                 let retryCount = 0;
                 let success = false;
                 let analysis = null;
                 
                 while (retryCount < 3 && !success) {
                     try {
+                        console.log(`Analyzing image for ${user.username} (attempt ${retryCount + 1})`);
+                        
                         analysis = await websim.chat.completions.create({
                             messages: [
                                 {
@@ -268,7 +286,7 @@ const BlenderApp = () => {
                                         },
                                         {
                                             type: "image_url",
-                                            image_url: { url: avatarDataUrl }
+                                            image_url: { url: dataUrl }
                                         }
                                     ]
                                 }
@@ -278,9 +296,9 @@ const BlenderApp = () => {
                     } catch (error) {
                         console.error(`Error analyzing image for ${user.username} (attempt ${retryCount + 1}):`, error);
                         retryCount++;
-                        // Wait longer before retrying
+                        // Wait longer before retrying (10 seconds between retries)
                         if (retryCount < 3) {
-                            await new Promise(resolve => setTimeout(resolve, 5000));
+                            await new Promise(resolve => setTimeout(resolve, 10000));
                         }
                     }
                 }
@@ -311,8 +329,8 @@ const BlenderApp = () => {
             // Combine analyses into a detailed prompt for the blended image
             const analysisText = imageAnalyses.map(a => `${a.username}: ${a.description}`).join('\n\n');
             
-            // Wait a bit before the next API call to avoid rate limits
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            // Wait a bit before the next API call to avoid rate limits (10 seconds)
+            await new Promise(resolve => setTimeout(resolve, 10000));
             
             let blendingGuidance;
             try {
