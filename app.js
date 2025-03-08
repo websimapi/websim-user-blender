@@ -195,10 +195,7 @@ const BlenderApp = () => {
     const fetchAvatarAsDataUrl = async (avatarUrl) => {
         try {
             // Create a canvas to convert the image
-            const response = await fetch(avatarUrl, { 
-                mode: 'cors',
-                cache: 'no-cache'
-            });
+            const response = await fetch(avatarUrl);
             const blob = await response.blob();
             
             return new Promise((resolve, reject) => {
@@ -222,39 +219,15 @@ const BlenderApp = () => {
         try {
             // Analyze each user's avatar image
             const imageAnalyses = [];
-            
-            // Process all avatars to data URLs first
-            const avatarData = [];
             for (const user of usersInBlender) {
-                try {
-                    const avatarDataUrl = await fetchAvatarAsDataUrl(user.avatarUrl);
-                    avatarData.push({
-                        user,
-                        dataUrl: avatarDataUrl
-                    });
-                } catch (error) {
-                    console.error(`Error fetching avatar for ${user.username}:`, error);
-                    avatarData.push({
-                        user,
-                        dataUrl: null
-                    });
-                }
-            }
-            
-            // Now analyze each avatar one by one with proper delays
-            for (const { user, dataUrl } of avatarData) {
-                // Show which user we're currently analyzing
-                setBlendedResult({
-                    processing: true,
-                    currentlyAnalyzing: user.username,
-                    analyses: imageAnalyses,
-                    users: usersInBlender.map(u => u.username)
-                });
+                let retryCount = 0;
+                let success = false;
+                let analysis = null;
                 
-                // Add longer delay between each analysis (15 seconds)
-                await new Promise(resolve => setTimeout(resolve, 15000));
+                // First get the avatar as data URL to avoid CORS issues
+                const avatarDataUrl = await fetchAvatarAsDataUrl(user.avatarUrl);
                 
-                if (!dataUrl) {
+                if (!avatarDataUrl) {
                     // If we couldn't get the avatar, use a fallback description
                     imageAnalyses.push({
                         username: user.username,
@@ -263,16 +236,14 @@ const BlenderApp = () => {
                     continue;
                 }
                 
-                let retryCount = 0;
-                let success = false;
-                let analysis = null;
+                // Add delay before processing each image to prevent rate limiting
+                if (imageAnalyses.length > 0) {
+                    console.log(`Waiting 15 seconds before analyzing ${user.username}'s avatar...`);
+                    await new Promise(resolve => setTimeout(resolve, 15000));
+                }
                 
                 while (retryCount < 3 && !success) {
                     try {
-                        console.log(`Analyzing image for ${user.username} (attempt ${retryCount + 1})`);
-                        
-                        // Use a new route for each analysis attempt
-                        const routeSuffix = `${Date.now()}-${retryCount}`;
                         analysis = await websim.chat.completions.create({
                             messages: [
                                 {
@@ -284,40 +255,34 @@ const BlenderApp = () => {
                                     content: [
                                         {
                                             type: "text",
-                                            text: `Describe this profile image (ID: ${routeSuffix}) in detail, focusing on color scheme, style, notable features, and visual elements.`
+                                            text: "Describe this profile image in detail, focusing on color scheme, style, notable features, and visual elements."
                                         },
                                         {
                                             type: "image_url",
-                                            image_url: { url: dataUrl }
+                                            image_url: { url: avatarDataUrl }
                                         }
                                     ]
                                 }
                             ]
                         });
                         success = true;
+                        console.log(`Successfully analyzed ${user.username}'s avatar`);
                     } catch (error) {
                         console.error(`Error analyzing image for ${user.username} (attempt ${retryCount + 1}):`, error);
                         retryCount++;
-                        // Wait longer before retrying (15 seconds between retries)
+                        // Wait before retrying with increasing backoff
                         if (retryCount < 3) {
-                            await new Promise(resolve => setTimeout(resolve, 15000));
+                            const waitTime = 1000 * Math.pow(2, retryCount); // Exponential backoff
+                            console.log(`Waiting ${waitTime/1000} seconds before retry...`);
+                            await new Promise(resolve => setTimeout(resolve, waitTime));
                         }
                     }
                 }
                 
                 if (success && analysis) {
-                    const newAnalysis = {
+                    imageAnalyses.push({
                         username: user.username,
                         description: analysis.content
-                    };
-                    imageAnalyses.push(newAnalysis);
-                    
-                    // Update the UI with the current analysis
-                    setBlendedResult({
-                        processing: true,
-                        currentlyAnalyzing: null,
-                        analyses: [...imageAnalyses],
-                        users: usersInBlender.map(u => u.username)
                     });
                 } else {
                     // Fallback description if all retries failed
@@ -330,9 +295,6 @@ const BlenderApp = () => {
             
             // Combine analyses into a detailed prompt for the blended image
             const analysisText = imageAnalyses.map(a => `${a.username}: ${a.description}`).join('\n\n');
-            
-            // Wait a bit before the next API call to avoid rate limits (15 seconds)
-            await new Promise(resolve => setTimeout(resolve, 15000));
             
             let blendingGuidance;
             try {
@@ -493,7 +455,7 @@ const BlenderApp = () => {
                         </div>
                     </div>
                     
-                    {(blendedResult && !blendedResult.processing) ? (
+                    {blendedResult && (
                         <div className="result-section">
                             <h2>Blended Result</h2>
                             <p>Created from: {blendedResult.users.join(', ')}</p>
@@ -526,29 +488,7 @@ const BlenderApp = () => {
                                 </details>
                             )}
                         </div>
-                    ) : (blendedResult && blendedResult.processing) ? (
-                        <div className="result-section">
-                            <h2>Processing...</h2>
-                            {blendedResult.currentlyAnalyzing && (
-                                <p>Currently analyzing: {blendedResult.currentlyAnalyzing}</p>
-                            )}
-                            <div className="loading-spinner"></div>
-                            
-                            {blendedResult.analyses && blendedResult.analyses.length > 0 && (
-                                <details open>
-                                    <summary>Completed analyses</summary>
-                                    <div className="analyses-list">
-                                        {blendedResult.analyses.map((analysis, index) => (
-                                            <div key={index} className="analysis-item">
-                                                <h4>{analysis.username}</h4>
-                                                <p>{analysis.description}</p>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </details>
-                            )}
-                        </div>
-                    ) : null}
+                    )}
                     
                     {creations.length > 0 && (
                         <div className="community-creations">
