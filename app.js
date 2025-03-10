@@ -6,7 +6,10 @@ const BlenderApp = () => {
     const [usersInHolding, setUsersInHolding] = useState([]);
     const [isBlending, setIsBlending] = useState(false);
     const [isPouring, setIsPouring] = useState(false);
+    const [liquidActive, setLiquidActive] = useState(false);
+    const [isChopping, setIsChopping] = useState(false);
     const [blendedResult, setBlendedResult] = useState(null);
+    const [resultVisible, setResultVisible] = useState(false);
     const [creations, setCreations] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [page, setPage] = useState(1);
@@ -447,155 +450,179 @@ const BlenderApp = () => {
     const handleBlend = async () => {
         if (usersInBlender.length === 0) return;
         
+        // Start the blending animation sequence
         setIsBlending(true);
-        let hasErrors = false;
-        let excludedUsers = [];
+        setIsChopping(true);
         
-        try {
-            // Analyze each user's avatar image
-            const imageAnalyses = [];
-            for (const user of usersInBlender) {
-                let retryCount = 0;
-                let success = false;
-                let analysis = null;
+        // Wait for chopping animation
+        setTimeout(() => {
+            setIsChopping(false);
+            setLiquidActive(true);
+            
+            // Continue with blending
+            setTimeout(async () => {
+                let hasErrors = false;
+                let excludedUsers = [];
                 
-                // First get the avatar as data URL to avoid CORS issues
-                const avatarDataUrl = await fetchAvatarAsDataUrl(user.avatarUrl);
-                
-                // Only proceed with analysis if we have a valid data URL
-                if (avatarDataUrl) {
-                    // We'll always have a data URL now (either real image or fallback)
-                    
-                    while (retryCount < 3 && !success) {
-                        try {
-                            analysis = await websim.chat.completions.create({
-                                messages: [
-                                    {
-                                        role: "system",
-                                        content: "You are an AI that analyzes profile images and provides detailed descriptions of their visual content, style, and notable features."
-                                    },
-                                    {
-                                        role: "user",
-                                        content: [
+                try {
+                    // Analyze each user's avatar image
+                    const imageAnalyses = [];
+                    for (const user of usersInBlender) {
+                        let retryCount = 0;
+                        let success = false;
+                        let analysis = null;
+                        
+                        // First get the avatar as data URL to avoid CORS issues
+                        const avatarDataUrl = await fetchAvatarAsDataUrl(user.avatarUrl);
+                        
+                        // Only proceed with analysis if we have a valid data URL
+                        if (avatarDataUrl) {
+                            // We'll always have a data URL now (either real image or fallback)
+                            
+                            while (retryCount < 3 && !success) {
+                                try {
+                                    analysis = await websim.chat.completions.create({
+                                        messages: [
                                             {
-                                                type: "text",
-                                                text: "Describe this profile image in detail, focusing on color scheme, style, notable features, and visual elements."
+                                                role: "system",
+                                                content: "You are an AI that analyzes profile images and provides detailed descriptions of their visual content, style, and notable features."
                                             },
                                             {
-                                                type: "image_url",
-                                                image_url: { url: avatarDataUrl }
+                                                role: "user",
+                                                content: [
+                                                    {
+                                                        type: "text",
+                                                        text: "Describe this profile image in detail, focusing on color scheme, style, notable features, and visual elements."
+                                                    },
+                                                    {
+                                                        type: "image_url",
+                                                        image_url: { url: avatarDataUrl }
+                                                    }
+                                                ]
                                             }
                                         ]
+                                    });
+                                    success = true;
+                                } catch (error) {
+                                    console.error(`Error analyzing image for ${user.username} (attempt ${retryCount + 1}):`, error);
+                                    retryCount++;
+                                    hasErrors = true;
+                                    // Wait before retrying
+                                    if (retryCount < 3) {
+                                        await new Promise(resolve => setTimeout(resolve, 1000));
                                     }
-                                ]
-                            });
-                            success = true;
-                        } catch (error) {
-                            console.error(`Error analyzing image for ${user.username} (attempt ${retryCount + 1}):`, error);
-                            retryCount++;
-                            hasErrors = true;
-                            // Wait before retrying
-                            if (retryCount < 3) {
-                                await new Promise(resolve => setTimeout(resolve, 1000));
+                                }
                             }
                         }
-                    }
-                }
-                
-                if (success && analysis) {
-                    imageAnalyses.push({
-                        username: user.username,
-                        description: analysis.content
-                    });
-                } else {
-                    // Track excluded users due to failure
-                    excludedUsers.push(user.username);
-                }
-            }
-            
-            // Check if we have any successful analyses to proceed
-            if (imageAnalyses.length === 0) {
-                throw new Error("Failed to analyze any avatar images. Please try again with fewer users.");
-            }
-            
-            // Show warning for excluded users
-            if (excludedUsers.length > 0) {
-                console.warn(`The following users were excluded due to image processing errors: ${excludedUsers.join(', ')}`);
-            }
-            
-            // Combine analyses into a detailed prompt for the blended image
-            const analysisText = imageAnalyses.map(a => `${a.username}: ${a.description}`).join('\n\n');
-            
-            let blendingGuidance;
-            try {
-                blendingGuidance = await websim.chat.completions.create({
-                    messages: [
-                        {
-                            role: "system",
-                            content: "You are an expert avatar creator. Based on the descriptions of multiple profile images, create a detailed prompt for an AI image generator to blend these into a cohesive new avatar."
-                        },
-                        {
-                            role: "user",
-                            content: `Original image descriptions:\n${analysisText}\n\nCreate a detailed generation prompt for a beautiful, artistic avatar that combines elements from all these profile images into one cohesive design. The result should be visually appealing and represent a blend of the styles and elements from the originals.`
+                        
+                        if (success && analysis) {
+                            imageAnalyses.push({
+                                username: user.username,
+                                description: analysis.content
+                            });
+                        } else {
+                            // Track excluded users due to failure
+                            excludedUsers.push(user.username);
                         }
-                    ]
-                });
-            } catch (error) {
-                console.error("Error creating blending guidance:", error);
-                // Fallback if the guidance creation fails
-                blendingGuidance = {
-                    content: `Create a beautiful avatar that combines elements from these users: ${imageAnalyses.map(a => a.username).join(', ')}. ${analysisText.substring(0, 500)}...`
-                };
-            }
-            
-            // Generate the blended image using the refined prompt
-            const imageResult = await websim.imageGen({
-                prompt: blendingGuidance.content,
-                aspect_ratio: "1:1"
-            });
-            
-            // Save result
-            setBlendedResult({
-                imageUrl: imageResult.url,
-                description: blendingGuidance.content,
-                analyses: imageAnalyses,
-                users: imageAnalyses.map(a => a.username),
-                userIds: usersInBlender
-                    .filter(u => !excludedUsers.includes(u.username))
-                    .map(u => u.id),
-                excludedUsers: excludedUsers,
-                timestamp: new Date().toISOString()
-            });
-            
-            // Save to database
-            await room.current.collection('blended_creation').create({
-                imageUrl: imageResult.url,
-                description: blendingGuidance.content,
-                analyses: imageAnalyses.map(a => ({ username: a.username, description: a.description })),
-                users: imageAnalyses.map(a => a.username),
-                userIds: usersInBlender
-                    .filter(u => !excludedUsers.includes(u.username))
-                    .map(u => u.id),
-                excludedUsers: excludedUsers,
-                username: room.current.party.client.username
-            });
-            
-            setIsBlending(false);
-            setIsPouring(true);
-            
-            // Reset after pouring animation completes
-            setTimeout(() => {
-                setIsPouring(false);
-                setUsersInBlender([]);
-            }, 2000);
-            
-        } catch (error) {
-            console.error("Error in blending process:", error);
-            setIsBlending(false);
-            
-            // Show a user-friendly error message
-            alert(error.message || "There was an error creating your blend. Please try again with fewer users.");
-        }
+                    }
+                    
+                    // Check if we have any successful analyses to proceed
+                    if (imageAnalyses.length === 0) {
+                        throw new Error("Failed to analyze any avatar images. Please try again with fewer users.");
+                    }
+                    
+                    // Show warning for excluded users
+                    if (excludedUsers.length > 0) {
+                        console.warn(`The following users were excluded due to image processing errors: ${excludedUsers.join(', ')}`);
+                    }
+                    
+                    // Combine analyses into a detailed prompt for the blended image
+                    const analysisText = imageAnalyses.map(a => `${a.username}: ${a.description}`).join('\n\n');
+                    
+                    // Continue with the blending process after animations
+                    setTimeout(() => {
+                        setIsBlending(false);
+                        setIsPouring(true);
+                        
+                        // Process the rest of the blending after pouring animation starts
+                        setTimeout(async () => {
+                            let blendingGuidance;
+                            try {
+                                blendingGuidance = await websim.chat.completions.create({
+                                    messages: [
+                                        {
+                                            role: "system",
+                                            content: "You are an expert avatar creator. Based on the descriptions of multiple profile images, create a detailed prompt for an AI image generator to blend these into a cohesive new avatar."
+                                        },
+                                        {
+                                            role: "user",
+                                            content: `Original image descriptions:\n${analysisText}\n\nCreate a detailed generation prompt for a beautiful, artistic avatar that combines elements from all these profile images into one cohesive design. The result should be visually appealing and represent a blend of the styles and elements from the originals.`
+                                        }
+                                    ]
+                                });
+                            } catch (error) {
+                                console.error("Error creating blending guidance:", error);
+                                // Fallback if the guidance creation fails
+                                blendingGuidance = {
+                                    content: `Create a beautiful avatar that combines elements from these users: ${imageAnalyses.map(a => a.username).join(', ')}. ${analysisText.substring(0, 500)}...`
+                                };
+                            }
+                            
+                            // Generate the blended image using the refined prompt
+                            const imageResult = await websim.imageGen({
+                                prompt: blendingGuidance.content,
+                                aspect_ratio: "1:1"
+                            });
+                            
+                            // Save result
+                            setBlendedResult({
+                                imageUrl: imageResult.url,
+                                description: blendingGuidance.content,
+                                analyses: imageAnalyses,
+                                users: imageAnalyses.map(a => a.username),
+                                userIds: usersInBlender
+                                    .filter(u => !excludedUsers.includes(u.username))
+                                    .map(u => u.id),
+                                excludedUsers: excludedUsers,
+                                timestamp: new Date().toISOString()
+                            });
+                            
+                            // Save to database
+                            await room.current.collection('blended_creation').create({
+                                imageUrl: imageResult.url,
+                                description: blendingGuidance.content,
+                                analyses: imageAnalyses.map(a => ({ username: a.username, description: a.description })),
+                                users: imageAnalyses.map(a => a.username),
+                                userIds: usersInBlender
+                                    .filter(u => !excludedUsers.includes(u.username))
+                                    .map(u => u.id),
+                                excludedUsers: excludedUsers,
+                                username: room.current.party.client.username
+                            });
+                            
+                            // Finish the animation sequence
+                            setTimeout(() => {
+                                setIsPouring(false);
+                                setLiquidActive(false);
+                                setResultVisible(true);
+                                setUsersInBlender([]);
+                            }, 2000);
+                            
+                        }, 500); // Delay after pouring starts
+                    }, 2000); // Delay before pouring
+                    
+                } catch (error) {
+                    console.error("Error in blending process:", error);
+                    setIsBlending(false);
+                    setIsPouring(false);
+                    setLiquidActive(false);
+                    setIsChopping(false);
+                    
+                    // Show a user-friendly error message
+                    alert(error.message || "There was an error creating your blend. Please try again with fewer users.");
+                }
+            }, 1500); // Delay after liquid appears
+        }, 1000); // Delay after chopping
     };
     
     const removeFromBlender = (userId) => {
@@ -902,10 +929,15 @@ const BlenderApp = () => {
                                     className={`blender ${isBlending ? 'shake-animation' : ''} ${isPouring ? 'pour-animation' : ''}`}
                                     ref={blenderRef}
                                 >
+                                    <div className="blender-base"></div>
+                                    <div className="blender-button"></div>
+                                    <div className={`blender-liquid ${liquidActive ? 'active' : ''}`}></div>
+                                    <div className={`liquid-stream ${isPouring ? 'pouring' : ''}`}></div>
+                                    
                                     {usersInBlender.map((user, index) => (
                                         <div 
                                             key={`${user.id}-${index}`}
-                                            className="user-in-blender"
+                                            className={`user-in-blender ${isChopping ? 'chopping' : ''}`}
                                             style={{
                                                 backgroundImage: `url(${user.avatarUrl})`,
                                                 left: `${user.position.x}px`,
@@ -942,14 +974,14 @@ const BlenderApp = () => {
                                     Users excluded due to errors: {blendedResult.excludedUsers.join(', ')}
                                 </p>
                             )}
-                            <div className="pouring-animation">
+                            <div className="result-frame">
                                 {isPouring ? (
                                     <div className="loading-spinner"></div>
                                 ) : (
                                     <img 
                                         src={blendedResult.imageUrl} 
                                         alt="Blended result"
-                                        className="blended-avatar drop-animation"
+                                        className={`blended-avatar ${resultVisible ? 'visible' : ''}`}
                                     />
                                 )}
                             </div>
